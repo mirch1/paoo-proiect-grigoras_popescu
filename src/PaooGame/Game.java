@@ -46,11 +46,15 @@ public class Game implements Runnable
     private boolean         runState;   /*!< Flag ce starea firului de executie.*/
     private Thread          gameThread; /*!< Referinta catre thread-ul de update si draw al ferestrei*/
     private BufferStrategy  bs;         /*!< Referinta catre un mecanism cu care se organizeaza memoria complexa pentru un canvas.*/
+    private Map             map;
+    private KeyManager      keyManager;
+    private Player          player;
+    private Camera          camera;
     /// Sunt cateva tipuri de "complex buffer strategies", scopul fiind acela de a elimina fenomenul de
     /// flickering (palpaire) a ferestrei.
     /// Modul in care va fi implementata aceasta strategie in cadrul proiectului curent va fi triplu buffer-at
 
-    ///                         |------------------------------------------------>|
+    ///                        |------------------------------------------------>|
     ///                         |                                                 |
     ///                 ****************          *****************        ***************
     ///                 *              *   Show   *               *        *             *
@@ -97,6 +101,16 @@ public class Game implements Runnable
         wnd.BuildGameWindow();
             /// Se incarca toate elementele grafice (dale)
         Assets.Init();
+        map = new Map("res/maps/level1.txt");
+
+        keyManager = new KeyManager();
+        wnd.GetCanvas().addKeyListener(keyManager);
+        wnd.GetCanvas().setFocusable(true);
+        wnd.GetCanvas().requestFocus();
+
+        player = new Player(10 * Tile.TILE_WIDTH + 8, 12 * Tile.TILE_HEIGHT + 4);
+
+        camera = new Camera(0, 0, wnd.GetWndWidth(), wnd.GetWndHeight());
     }
 
     /*! \fn public void run()
@@ -197,7 +211,15 @@ public class Game implements Runnable
      */
     private void Update()
     {
+        keyManager.Update();
 
+        if (player != null && map != null) {
+            player.Update(keyManager, map);
+        }
+
+        if (camera != null && player != null && map != null) {
+            camera.CenterOnPlayer(player, map);
+        }
     }
 
     /*! \fn private void Draw()
@@ -227,18 +249,31 @@ public class Game implements Runnable
         }
             /// Se obtine contextul grafic curent in care se poate desena.
         g = bs.getDrawGraphics();
+        g.setColor(new Color(18,28,18));
+        g.fillRect(0,0, wnd.GetWndWidth(), wnd.GetWndHeight());
             /// Se sterge ce era
         g.clearRect(0, 0, wnd.GetWndWidth(), wnd.GetWndHeight());
 
-            /// operatie de desenare
-            // ...............
-            Tile.grassTile.Draw(g, 0 * Tile.TILE_WIDTH, 0);
-            Tile.soilTile.Draw(g, 1 * Tile.TILE_WIDTH, 0);
-            Tile.waterTile.Draw(g, 2 * Tile.TILE_WIDTH, 0);
-            Tile.mountainTile.Draw(g, 3 * Tile.TILE_WIDTH, 0);
-            Tile.treeTile.Draw(g, 4 * Tile.TILE_WIDTH, 0);
 
-            g.drawRect(1 * Tile.TILE_WIDTH, 1 * Tile.TILE_HEIGHT, Tile.TILE_WIDTH, Tile.TILE_HEIGHT);
+        int offsetX = 0;
+        int offsetY = 0;
+
+        if(map != null) {
+            if(map.getPixelWidth() < wnd.GetWndWidth()) {
+                offsetX = (wnd.GetWndWidth() - map.getPixelWidth()) / 2;
+            }
+
+            if(map.getPixelHeight() < wnd.GetWndHeight()) {
+                offsetY = (wnd.GetWndHeight() - map.getPixelHeight()) / 2;
+            }
+        }
+        if (map != null && camera != null) {
+            map.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
+
+        if (player != null && camera != null) {
+            player.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
 
 
             // end operatie de desenare

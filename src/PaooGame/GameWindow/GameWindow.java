@@ -22,7 +22,7 @@ public class GameWindow
     /*! \fn GameWindow(String title, int width, int height)
             \brief Constructorul cu parametri al clasei GameWindow
 
-            Retine proprietatile ferestrei proprietatile (titlu, latime, inaltime)
+            Retine proprietatile ferestrei (titlu, latime, inaltime)
             in variabilele membre deoarece vor fi necesare pe parcursul jocului.
             Crearea obiectului va trebui urmata de crearea ferestrei propriuzise
             prin apelul metodei BuildGameWindow()
@@ -40,61 +40,62 @@ public class GameWindow
 
     /*! \fn private void BuildGameWindow()
         \brief Construieste/creaza fereastra si seteaza toate proprietatile
-        necesare: dimensiuni, pozitionare in centrul ecranului, operatia de
-        inchidere, invalideaza redimensionarea ferestrei, afiseaza fereastra.
+        necesare: dimensiuni, pozitionare, operatia de inchidere si modul fullscreen.
 
      */
     public void BuildGameWindow()
     {
-            /// Daca fereastra a mai fost construita intr-un apel anterior
-            /// se renunta la apel
+        /// Daca fereastra a mai fost construita intr-un apel anterior
+        /// se renunta la apel
         if(wndFrame != null)
         {
             return;
         }
-            /// Aloca memorie pentru obiectul de tip fereastra si seteaza denumirea
-            /// ce apare in bara de titlu
+        /// Aloca memorie pentru obiectul de tip fereastra si seteaza denumirea
+        /// ce apare in bara de titlu
         wndFrame = new JFrame(wndTitle);
-            /// Seteaza dimensiunile ferestrei in pixeli
-        wndFrame.setSize(wndWidth, wndHeight);
-            /// Operatia de inchidere (fereastra sa poata fi inchisa atunci cand
-            /// este apasat butonul x din dreapta sus al ferestrei). Totodata acest
-            /// lucru garanteaza ca nu doar fereastra va fi inchisa ci intregul
-            /// program
-        wndFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            /// Avand in vedere ca dimensiunea ferestrei poate fi modificata
-            /// si corespunzator continutul actualizat (aici ma refer la dalele
-            /// randate) va recomand sa constrangeti deocamdata jucatorul
-            /// sa se joace in fereastra stabilitata de voi. Puteti reveni asupra
-            /// urmatorului apel ulterior.
-        wndFrame.setResizable(false);
-            /// Recomand ca fereastra sa apara in centrul ecranului. Pentru orice
-            /// alte pozitie se va apela "wndFrame.setLocation(x, y)" etc.
-        wndFrame.setLocationRelativeTo(null);
-            /// Implicit o fereastra cand este creata nu este vizibila motiv pentru
-            /// care trebuie setata aceasta proprietate
-        wndFrame.setVisible(true);
 
-            /// Creaza obiectul de tip canvas (panza) pe care se poate desena.
+        /// Ascunde marginile si bara de titlu a ferestrei (obligatoriu pentru Fullscreen).
+        /// Aceasta comanda trebuie plasata inainte ca fereastra sa devina vizibila.
+        wndFrame.setUndecorated(true);
+
+        /// Seteaza dimensiunile ferestrei in pixeli
+        wndFrame.setSize(wndWidth, wndHeight);
+        /// Operatia de inchidere (garanteaza ca si programul este inchis cand fereastra dispare)
+        wndFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        /// Invalideaza redimensionarea ferestrei
+        wndFrame.setResizable(false);
+        /// Recomand ca fereastra sa apara in centrul ecranului.
+        wndFrame.setLocationRelativeTo(null);
+
+        /// Creaza obiectul de tip canvas (panza) pe care se poate desena.
         canvas = new Canvas();
-            /// In aceeasi maniera trebuiesc setate proprietatile pentru acest obiect
-            /// canvas (panza): dimensiuni preferabile, minime, maxime etc.
-            /// Urmotorul apel de functie seteaza dimensiunea "preferata"/implicita
-            /// a obiectului de tip canvas.
-            /// Functia primeste ca parametru un obiect de tip Dimension ca incapsuleaza
-            /// doua proprietati: latime si inaltime. Cum acest obiect nu exista
-            /// a fost creat unul si dat ca parametru.
+        /// Seteaza dimensiunile preferate, minime si maxime pentru canvas.
         canvas.setPreferredSize(new Dimension(wndWidth, wndHeight));
-            /// Avand in vedere ca elementele unei ferestre pot fi scalate atunci cand
-            /// fereastra este redimensionata
         canvas.setMaximumSize(new Dimension(wndWidth, wndHeight));
         canvas.setMinimumSize(new Dimension(wndWidth, wndHeight));
-            /// Avand in vedere ca obiectul de tip canvas, proaspat creat, nu este automat
-            /// adaugat in fereastra trebuie apelata metoda add a obiectul wndFrame
+
+        /// Adauga obiectul canvas in fereastra
         wndFrame.add(canvas);
-            /// Urmatorul apel de functie are ca scop eventuala redimensionare a ferestrei
-            /// ca tot ce contine sa poate fi afisat complet
+        /// Redimensioneaza fereastra ca tot ce contine sa poata fi afisat complet
         wndFrame.pack();
+
+        /// Preia controlul placii video si activeaza modul Full-Screen Exclusive (FSEM).
+        /// Prin aceasta metoda, fereastra noastra sare peste Window Manager-ul sistemului de operare.
+        GraphicsEnvironment env = GraphicsEnvironment.getLocalGraphicsEnvironment();
+        GraphicsDevice device = env.getDefaultScreenDevice();
+        try {
+            if (device.isFullScreenSupported()) {
+                device.setFullScreenWindow(wndFrame); // Aceasta linie face fereastra vizibila automat
+            } else {
+                /// Daca sistemul nu suporta fullscreen exclusiv, fereastra este maximizata clasic.
+                wndFrame.setExtendedState(JFrame.MAXIMIZED_BOTH);
+                wndFrame.setVisible(true);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            wndFrame.setVisible(true);
+        }
     }
 
     /*! \fn public int GetWndWidth()
@@ -105,7 +106,7 @@ public class GameWindow
         return wndWidth;
     }
 
-    /*! \fn public int GetWndWidth()
+    /*! \fn public int GetWndHeight()
         \brief Returneaza inaltimea ferestrei.
      */
     public int GetWndHeight()
@@ -113,7 +114,7 @@ public class GameWindow
         return wndHeight;
     }
 
-    /*! \fn public int GetCanvas()
+    /*! \fn public Canvas GetCanvas()
         \brief Returneaza referinta catre canvas-ul din fereastra pe care se poate desena.
      */
     public Canvas GetCanvas() {

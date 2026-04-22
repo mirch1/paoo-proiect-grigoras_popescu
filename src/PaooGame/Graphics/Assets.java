@@ -24,6 +24,10 @@ public class Assets
     public static BufferedImage rockLeft;
     public static BufferedImage rockRight;
     public static BufferedImage tree;
+    public static BufferedImage dungeonFloor;
+    public static BufferedImage dungeonWall;
+    public static BufferedImage dungeonBarrel;
+    public static BufferedImage dungeonChest;
 
     /*! \fn public static void Init()
         \brief Functia initializaza referintele catre elementele grafice utilizate.
@@ -35,7 +39,7 @@ public class Assets
     {
             /// Se creaza temporar un obiect SpriteSheet initializat prin intermediul clasei ImageLoader
         SpriteSheet sheet = new SpriteSheet(ImageLoader.LoadImage("/textures/PaooGameSpriteSheet.png"));
-
+        BufferedImage dungeonImg = ImageLoader.LoadImage(("/textures/Dungeon_TileSet.png"));
             /// Se obtin subimaginile corespunzatoare elementelor necesare.
         grass = sheet.crop(0, 0);
         soil = sheet.crop(1, 0);
@@ -51,5 +55,10 @@ public class Assets
         rockDown = sheet.crop(3, 2);
         rockLeft = sheet.crop(0, 3);
         rockRight = sheet.crop(1, 3);
+
+        dungeonFloor  = dungeonImg.getSubimage(1 * 16, 1 * 16, 16, 16);
+        dungeonWall   = dungeonImg.getSubimage(1 * 16, 0 * 16, 16, 16);
+        dungeonBarrel = dungeonImg.getSubimage(7 * 16, 3 * 16, 16, 16);
+        dungeonChest  = dungeonImg.getSubimage(2 * 16, 8 * 16, 16, 16);
     }
 }

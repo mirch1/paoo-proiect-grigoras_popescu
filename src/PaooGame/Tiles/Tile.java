@@ -18,7 +18,10 @@ public class Tile
     public static Tile waterTile        = new WaterTile(2);     /*!< Dala de tip apa*/
     public static Tile treeTile         = new TreeTile(3);      /*!< Dala de tip copac*/
     public static Tile soilTile         = new SoilTile(4);      /*!< Dala de tip sol/pamant*/
-
+    public static Tile dungeonFloorTile = new DungeonFloorTile(5);
+    public static Tile dungeonWallTile = new DungeonWallTile(6);
+    public static Tile dungeonBarrelTile = new DungeonBarrelTile(7);
+    public static Tile dungeonChestTile = new DungeonChestTile(8);
     public static final int TILE_WIDTH  = 48;                       /*!< Latimea unei dale.*/
     public static final int TILE_HEIGHT = 48;                       /*!< Inaltimea unei dale.*/
 

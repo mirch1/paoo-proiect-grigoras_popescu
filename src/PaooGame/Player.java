@@ -1,72 +1,60 @@
 package PaooGame;
 
-import PaooGame.Tiles.Tile;
-
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import javax.imageio.ImageIO;
 
-public class Player {
+/*! \class Player
+    \brief Implementeaza personajul principal controlat de jucator, mostenind clasa de baza Entity.
+ */
+public class Player extends Entity {
 
-    // --- POZIȚIE ȘI DIMENSIUNI JUCĂTOR ---
-    private float x;
-    private float y;
-    private final int width;
-    private final int height;
-    private final float speed;
+    /// NOTA: Variabilele fizice (x, y, width, height, speed) si hitbox-urile
+    /// sunt mostenite automat din clasa Entity. Nu mai trebuie declarate aici!
 
-    // --- SETĂRI PENTRU COLIZIUNI (Hitbox-ul picioarelor) ---
-    // Aceste variabile definesc "amprenta" jucătorului pe hartă
-    // pentru a verifica coliziunile doar la nivelul picioarelor (efect 2.5D).
-    private final int feetOffsetX = 9;
-    private final int feetOffsetY = 47;
-    private final int feetWidth = 10;
-    private final int feetHeight = 6;
+    private Animation animIdle;         /*!< Animatia pentru starea de repaus (idle).*/
+    private Animation animRun;          /*!< Animatia pentru starea de miscare (run).*/
+    private Animation animTurnAround;   /*!< Animatia de tranzitie cand jucatorul schimba directia.*/
 
-    // --- ANIMAȚII ȘI RESURSE GRAFICE ---
-    private Animation animIdle;         // Cadre pentru stat pe loc
-    private Animation animRun;          // Cadre pentru mișcare/alergare
-    private Animation animTurnAround;   // Cadre de tranziție pentru pivotare (schimbare direcție)
+    private boolean isMoving = false;   /*!< Flag care indica daca jucatorul este in miscare.*/
+    private boolean isTurning = false;  /*!< Flag care indica daca jucatorul se afla intr-o tranzitie de intoarcere.*/
+    private boolean facingRight = true; /*!< Flag care retine directia in care este orientat jucatorul.*/
+    private int turnTimer = 0;          /*!< Temporizator pentru a sustine durata animatiei de intoarcere.*/
 
-    // --- STĂRILE JUCĂTORULUI ---
-    private boolean isMoving = false;   // Adevărat dacă jucătorul se deplasează
-    private boolean isTurning = false;  // Adevărat dacă jucătorul este în mijlocul unei întoarceri
-    private boolean facingRight = true; // Ține minte direcția (ajută la desenarea în oglindă)
-    private int turnTimer = 0;          // Cronometru care menține animația de întoarcere pe ecran
-
+    /*! \fn public Player(float x, float y)
+        \brief Constructorul de initializare al clasei Player.
+        \param x Pozitia initiala pe axa X.
+        \param y Pozitia initiala pe axa Y.
+     */
     public Player(float x, float y) {
-        this.x = x;
-        this.y = y;
+        /// Apelam constructorul clasei de baza Entity pentru a seta coordonatele si dimensiunile standard (32x32).
+        super(x, y, 32, 32);
 
-        this.width = 32;
-        this.height = 32;
+        /// Setam viteza specifica a jucatorului.
         this.speed = 4.0f;
 
-        // --- ÎNCĂRCAREA IMAGINILOR PENTRU ANIMAȚII ---
+        /// Incarcam resursele grafice (sprite sheet-urile) pentru animatii.
         try {
             int frameWidth = 120;
             int frameHeight = 80;
 
-            // 1. Încărcare IDLE
             BufferedImage sheetIdle = ImageIO.read(new File("res/textures/_Idle.png"));
-            BufferedImage[] framesIdle = new BufferedImage[10]; // Ajustează cu numărul real de cadre
+            BufferedImage[] framesIdle = new BufferedImage[10];
             for(int i = 0; i < framesIdle.length; i++) {
                 framesIdle[i] = sheetIdle.getSubimage(i * frameWidth, 0, frameWidth, frameHeight);
             }
             animIdle = new Animation(100, framesIdle);
 
-            // 2. Încărcare RUN
             BufferedImage sheetRun = ImageIO.read(new File("res/textures/_Run.png"));
-            BufferedImage[] framesRun = new BufferedImage[10]; // Ajustează cu numărul real de cadre
+            BufferedImage[] framesRun = new BufferedImage[10];
             for(int i = 0; i < framesRun.length; i++) {
                 framesRun[i] = sheetRun.getSubimage(i * frameWidth, 0, frameWidth, frameHeight);
             }
             animRun = new Animation(80, framesRun);
 
-            // 3. Încărcare TURN AROUND
             BufferedImage sheetTurnAround = ImageIO.read(new File("res/textures/_TurnAround.png"));
-            BufferedImage[] framesTurnAround = new BufferedImage[3]; // Avem 3 cadre pentru întoarcere
+            BufferedImage[] framesTurnAround = new BufferedImage[3];
             for(int i = 0; i < framesTurnAround.length; i++) {
                 framesTurnAround[i] = sheetTurnAround.getSubimage(i * frameWidth, 0, frameWidth, frameHeight);
             }
@@ -78,44 +66,45 @@ public class Player {
         }
     }
 
+    /*! \fn public void Update(KeyManager keyManager, Map map)
+        \brief Actualizeaza pozitia, starea si animatia jucatorului pe baza input-ului.
+        \param keyManager Referinta catre obiectul care gestioneaza intrarile de la tastatura.
+        \param map Referinta catre harta curenta pentru a verifica coliziunile.
+     */
     public void Update(KeyManager keyManager, Map map) {
         float xMove = 0;
         float yMove = 0;
-
-        // Ținem minte direcția în care ne uitam înainte de a verifica tastele
         boolean wasFacingRight = facingRight;
 
-        // --- 1. PRELUAREA COMENZILOR (Input) ȘI DIRECȚIEI ---
+        /// Stabilim directia de miscare in functie de tastele apasate
         if (keyManager.up)    yMove -= speed;
         if (keyManager.down)  yMove += speed;
-
         if (keyManager.left) {
             xMove -= speed;
-            facingRight = false; // Setăm orientarea spre stânga
+            facingRight = false;
         }
         if (keyManager.right) {
             xMove += speed;
-            facingRight = true;  // Setăm orientarea spre dreapta
+            facingRight = true;
         }
 
-        // --- 2. LOGICA PENTRU ANIMAȚIA DE ÎNTOARCERE ---
-        // Dacă direcția s-a schimbat față de cadrul anterior, inițiem întoarcerea
+        /// Daca directia s-a schimbat fata de cadrul anterior, declansam starea de intoarcere
         if (wasFacingRight != facingRight && xMove != 0) {
             isTurning = true;
-            turnTimer = 15; // Setăm timer-ul la ~15 cadre (aprox. un sfert de secundă)
+            turnTimer = 15; /// Durata tranzitiei de intoarcere
         }
 
-        // Dacă suntem în starea de întoarcere, scădem timer-ul
+        /// Gestionam temporizatorul de intoarcere
         if (turnTimer > 0) {
             turnTimer--;
         } else {
-            isTurning = false; // După expirarea timpului, oprim starea de întoarcere
+            isTurning = false;
         }
 
-        // --- 3. ACTUALIZAREA STĂRILOR ȘI ANIMAȚIILOR ---
+        /// Determinam starea generala de miscare
         isMoving = (xMove != 0 || yMove != 0);
 
-        // Dăm "tick" animației corespunzătoare
+        /// Actualizam frame-ul (cadrul) animatiei curente
         if (isTurning) {
             if (animTurnAround != null) animTurnAround.tick();
         } else if (isMoving) {
@@ -124,16 +113,14 @@ public class Player {
             if (animIdle != null) animIdle.tick();
         }
 
-        // --- 4. APLICAREA MIȘCĂRII ȘI VERIFICAREA COLIZIUNILOR ---
-        // Mișcare X
+        /// Aplicam miscarea efectiva doar daca testul de coliziune trece cu succes.
+        /// Functia CanMoveTo() este apelata din clasa parinte Entity.
         if (xMove != 0) {
             float newX = x + xMove;
             if (CanMoveTo(newX, y, map)) {
                 x = newX;
             }
         }
-
-        // Mișcare Y
         if (yMove != 0) {
             float newY = y + yMove;
             if (CanMoveTo(x, newY, map)) {
@@ -142,82 +129,50 @@ public class Player {
         }
     }
 
-    // Funcție de verificare a coliziunilor
-    private boolean CanMoveTo(float testX, float testY, Map map) {
-        float left = testX + feetOffsetX;
-        float right = testX + feetOffsetX + feetWidth - 1;
-        float top = testY + feetOffsetY;
-        float bottom = testY + feetOffsetY + feetHeight - 1;
-
-        if (left < 0 || top < 0 ||
-                right >= map.getPixelWidth() ||
-                bottom >= map.getPixelHeight()) {
-            return false;
-        }
-
-        return !map.isSolidAtPixel(left, top) &&
-                !map.isSolidAtPixel(right, top) &&
-                !map.isSolidAtPixel(left, bottom) &&
-                !map.isSolidAtPixel(right, bottom);
-    }
-
+    /*! \fn public void Draw(Graphics g, int cameraX, int cameraY, int offsetX, int offsetY)
+        \brief Randeaza jucatorul si umbra sa pe ecran in spatiul relativ al camerei.
+        \param g Contextul grafic in care se face desenarea.
+        \param cameraX Pozitia curenta a camerei pe axa X.
+        \param cameraY Pozitia curenta a camerei pe axa Y.
+        \param offsetX Decalajul pe axa X pentru centrarea hartii globale.
+        \param offsetY Decalajul pe axa Y pentru centrarea hartii globale.
+     */
     public void Draw(Graphics g, int cameraX, int cameraY, int offsetX, int offsetY) {
-        // Calculăm poziția de desenare pe ecran
+        /// Calculam coordonatele virtuale pe ecran tinand cont de camera si de offset-ul general
         int screenX = offsetX + (int) x - cameraX;
         int screenY = offsetY + (int) y - cameraY;
 
         Graphics2D g2 = (Graphics2D) g;
 
-        // --- 1. DESENARE UMBRĂ ---
+        /// Desenam o umbra eliptica simpla pentru a spori efectul 2.5D (depth)
         g2.setColor(new Color(0, 0, 0, 60));
         g2.fillOval(screenX + 8, screenY + 24, 18, 8);
 
-        // --- 2. DESENARE JUCĂTOR ---
+        /// Randarea animatiei
         if (animIdle != null && animRun != null && animTurnAround != null) {
-            int drawWidth = 78;
-            int drawHeight = 82;
             int drawX = screenX - 22;
-            int drawY = screenY - 28;
-
-            // Extragem cadrul potrivit ținând cont de priorități
+            int drawY = screenY - 52;
             BufferedImage currentFrame;
-            if (isTurning) {
-                currentFrame = animTurnAround.getCurrentFrame();
-            } else if (isMoving) {
-                currentFrame = animRun.getCurrentFrame();
-            } else {
-                currentFrame = animIdle.getCurrentFrame();
-            }
 
-            // --- TRUCUL PENTRU FLIP (ÎNTOARCEREA IMAGINII) ---
+            /// Selectam imaginea potrivita din memoria de animatii
+            if (isTurning) currentFrame = animTurnAround.getCurrentFrame();
+            else if (isMoving) currentFrame = animRun.getCurrentFrame();
+            else currentFrame = animIdle.getCurrentFrame();
+
+            /// Desenarea propriu-zisa a imaginii
             if (facingRight) {
-                // Dacă mergem la dreapta, desenăm normal
-                g2.drawImage(currentFrame, drawX, drawY, drawWidth, drawHeight, null);
+                g2.drawImage(currentFrame, drawX, drawY, 78, 82, null);
             } else {
-                // Dacă mergem la stânga, desenăm în oglindă inversând coordonatele X de destinație
+                /// Utilizam tehnica de 'flip' orizontal din Java 2D cand player-ul se misca la stanga
                 g2.drawImage(currentFrame,
-                        drawX + drawWidth, drawY, drawX, drawY + drawHeight, // Destinație (pe ecran) răsturnată
-                        0, 0, currentFrame.getWidth(), currentFrame.getHeight(), // Sursa (din imagine) normală
+                        drawX + 78, drawY, drawX, drawY + 82,
+                        0, 0, currentFrame.getWidth(), currentFrame.getHeight(),
                         null);
             }
-
         } else {
-            // FALLBACK
+            /// Fallback de siguranta: Daca imaginile nu au putut fi incarcate, se deseneaza un dreptunghi
             g2.setColor(new Color(180, 190, 220));
             g2.fillRect(screenX, screenY, width, height);
-            g2.setColor(new Color(40, 40, 60));
-            g2.drawRect(screenX, screenY, width, height);
         }
-    }
-
-    // --- GETTERS & SETTERS ---
-    public float GetX() { return x; }
-    public float GetY() { return y; }
-    public int GetWidth() { return width; }
-    public int GetHeight() { return height; }
-
-    public void setPosition(float x, float y) {
-        this.x = x;
-        this.y = y;
     }
 }

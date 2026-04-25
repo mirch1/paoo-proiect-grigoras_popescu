@@ -21,6 +21,7 @@ public class Game implements Runnable
     private Map             map;                /*!< Referinta catre harta curenta a nivelului.*/
     private KeyManager      keyManager;         /*!< Referinta catre managerul de evenimente de tastatura.*/
     private Player          player;             /*!< Referinta catre personajul controlat de utilizator.*/
+    private Enemy           testEnemy;          /*!< Referinta catre inamicul de baza care urmareste jucatorul.*/
     private Camera          camera;             /*!< Referinta catre camera care urmareste jucatorul.*/
 
     private int             currentLevel;       /*!< Retine numarul nivelului curent incarcat.*/
@@ -174,6 +175,11 @@ public class Game implements Runnable
             player.Update(keyManager, map);
         }
 
+        /// actualizam logica (AI, miscare, animatii) inamicului curent
+        if (testEnemy != null && map != null) {
+            testEnemy.Update(map);
+        }
+
         if (camera != null && player != null && map != null) {
             camera.CenterOnPlayer(player, map);
         }
@@ -254,6 +260,11 @@ public class Game implements Runnable
             map.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
 
+        /// randam inamicul (este desenat inainte de player pentru a ramane in "spatele" lui vizual in caz de suprapunere)
+        if (testEnemy != null && camera != null) {
+            testEnemy.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
+
         if (player != null && camera != null) {
             player.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
@@ -310,6 +321,10 @@ public class Game implements Runnable
             } else {
                 player.setPosition(10 * Tile.TILE_WIDTH + 8, 14 * Tile.TILE_HEIGHT);
             }
+            /// Initializam inamicul pe harta la pornirea nivelului
+            /// Ii dam coordonatele de spawn si ii transmitem referinta catre player pentru AI
+            if (testEnemy == null) testEnemy = new Enemy(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
+            else testEnemy.setPosition(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT);
         }
         else if (level == 2) {
             map = new Map("res/maps/level2.txt");

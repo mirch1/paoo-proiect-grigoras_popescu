@@ -15,34 +15,31 @@ public class KeyManager implements KeyListener {
     public boolean left;     /*!< Flag pentru tasta A / Sageata Stanga.*/
     public boolean right;    /*!< Flag pentru tasta D / Sageata Dreapta.*/
 
-    public boolean escape;   /*!< Flag pentru tasta ESC (Meniu de pauza).*/
-    public boolean enter;    /*!< Flag pentru tasta ENTER (Confirmari Meniu).*/
+    public boolean escape;   /*!< Flag pentru tasta ESC (Activare/Deactivare Meniu de pauza).*/
+    public boolean enter;    /*!< Flag pentru tasta ENTER (Confirmarea selectiei in meniu).*/
+    public boolean debug;    /*!< Flag pentru tasta H (Activare/Deactivare Hitbox-uri).*/
 
     /*! \fn public void Update()
         \brief Actualizeaza flagurile de control pe baza starii vectorului de taste.
      */
     public void Update() {
-        /// Mapam tastele directionale (suportam si WASD si Sageti)
         up = isPressed(KeyEvent.VK_W) || isPressed(KeyEvent.VK_UP);
         down = isPressed(KeyEvent.VK_S) || isPressed(KeyEvent.VK_DOWN);
         left = isPressed(KeyEvent.VK_A) || isPressed(KeyEvent.VK_LEFT);
         right = isPressed(KeyEvent.VK_D) || isPressed(KeyEvent.VK_RIGHT);
 
-        /// Preluam starea pentru meniul UI suprapus
         escape = isPressed(KeyEvent.VK_ESCAPE);
         enter = isPressed(KeyEvent.VK_ENTER);
+        debug = isPressed(KeyEvent.VK_H);
     }
 
     /*! \fn private boolean isPressed(int keyCode)
-        \brief Functie utilitara ce previne exceptiile de tip IndexOutOfBounds.
+        \brief Functie utilitara ce verifica starea unei taste in siguranta.
      */
     private boolean isPressed(int keyCode) {
         return keyCode >= 0 && keyCode < keys.length && keys[keyCode];
     }
 
-    /*! \fn public void keyPressed(KeyEvent e)
-        \brief Functie apelata automat la apasarea oricarei taste fizice.
-     */
     @Override
     public void keyPressed(KeyEvent e) {
         int code = e.getKeyCode();
@@ -51,9 +48,6 @@ public class KeyManager implements KeyListener {
         }
     }
 
-    /*! \fn public void keyReleased(KeyEvent e)
-        \brief Functie apelata automat la eliberarea oricarei taste fizice.
-     */
     @Override
     public void keyReleased(KeyEvent e) {
         int code = e.getKeyCode();
@@ -63,7 +57,5 @@ public class KeyManager implements KeyListener {
     }
 
     @Override
-    public void keyTyped(KeyEvent e) {
-        /// Neimplementat, nu avem nevoie de caracterele propriu-zise tiparite.
-    }
+    public void keyTyped(KeyEvent e) {}
 }

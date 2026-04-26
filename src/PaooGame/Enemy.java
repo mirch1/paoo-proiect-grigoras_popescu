@@ -42,7 +42,7 @@ public class Enemy extends Entity {
 
         /// --- AJUSTARE HITBOX COLIZIUNI ---
         /// Definim zona in care lupul se loveste de pereti doar in jumatatea de jos (la picioare)
-        /// Astfel obtinem efectul 2.5D de profunzime, permitand vizual "capului" sa se suprapuna peste pereti.
+        /// Astfel obtinem efectul 2.5D de profunzime, permitand vizual corpului sa se suprapuna peste pereti.
         this.feetOffsetX = 4;
         this.feetOffsetY = 20;
         this.feetWidth = 24;
@@ -119,7 +119,7 @@ public class Enemy extends Entity {
             }
         }
 
-        /// 3. ACTUALIZAREA STARII SI A ANIMAȚIEI CURENTE
+        /// 3. ACTUALIZAREA STARII SI A ANIMATIEI CURENTE
         isMoving = (xMove != 0 || yMove != 0);
 
         if (isMoving) {
@@ -155,13 +155,14 @@ public class Enemy extends Entity {
 
         if (animIdle != null && animRun != null) {
 
+            /// Il facem de 32x32
             int renderWidth = 32;
             int renderHeight = 32;
 
-            /// Calculam offset-ul de desenare pentru a centra desenul mărit (64)
+            /// Calculam offset-ul de desenare pentru a centra desenul marit (64)
             /// peste cutia sa de coliziune (32). -16px pe ambele axe il asaza perfect la centru.
-            int drawX = screenX - 0;
-            int drawY = screenY - 4; /// Y ajustat pentru a "cobori" lupul pe pamant
+            int drawX = screenX - 1;
+            int drawY = screenY - 0;
 
             BufferedImage currentFrame = isMoving ? animRun.getCurrentFrame() : animIdle.getCurrentFrame();
 
@@ -178,6 +179,19 @@ public class Enemy extends Entity {
             /// Cutie de avertizare rosie in caz de eroare I/O la imagini
             g2.setColor(Color.RED);
             g2.fillRect(screenX, screenY, width, height);
+        }
+
+        /// =========================================
+        /// DEBUG: AFISARE HITBOX PENTRU COLIZIUNI
+        /// =========================================
+        if (Game.showHitboxes) {
+            /// Cutia verde: Bounding Box-ul general (Spatiul virtual al personajului)
+            g2.setColor(Color.GREEN);
+            g2.drawRect(screenX, screenY, width, height);
+
+            /// Cutia rosie: Hitbox-ul real (Picioarele care se lovesc de harta)
+            g2.setColor(Color.RED);
+            g2.drawRect(screenX + feetOffsetX, screenY + feetOffsetY, feetWidth, feetHeight);
         }
     }
 }

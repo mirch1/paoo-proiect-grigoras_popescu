@@ -2,12 +2,16 @@ package PaooGame;
 
 import PaooGame.Tiles.Tile;
 
+import java.awt.Color;
 import java.awt.Graphics;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.List;
 
+/*! \class Map
+    \brief Gestioneaza incarcarea, logica de coliziune si randarea hartii bazate pe tile-uri.
+ */
 public class Map {
     private int[][] mapData;
     private int rows;
@@ -84,6 +88,9 @@ public class Map {
         }
     }
 
+    /*! \fn public void Draw(Graphics g, int cameraX, int cameraY, int offsetX, int offsetY)
+        \brief Randeaza tile-urile hartii pe ecran si afiseaza hitbox-urile daca modul debug este activ.
+     */
     public void Draw(Graphics g, int cameraX, int cameraY, int offsetX, int offsetY) {
         for (int row = 0; row < rows; row++) {
             for (int col = 0; col < cols; col++) {
@@ -94,9 +101,24 @@ public class Map {
                     tile = Tile.grassTile;
                 }
 
-                tile.Draw(g,
-                        offsetX + col * Tile.TILE_WIDTH - cameraX,
-                        offsetY + row * Tile.TILE_HEIGHT - cameraY);
+                /// Calculam coordonatele pe ecran o singura data pentru eficienta
+                int drawX = offsetX + col * Tile.TILE_WIDTH - cameraX;
+                int drawY = offsetY + row * Tile.TILE_HEIGHT - cameraY;
+
+                tile.Draw(g, drawX, drawY);
+
+                /// =========================================
+                /// DEBUG: AFISARE HITBOX PENTRU PERETI/OBSTACOLE
+                /// =========================================
+                if (Game.showHitboxes && tile.IsSolid()) {
+                    /// Desenam un patrat albastru semi-transparent peste tile-urile solide
+                    g.setColor(new Color(0, 0, 255, 100));
+                    g.fillRect(drawX, drawY, Tile.TILE_WIDTH, Tile.TILE_HEIGHT);
+
+                    /// Adaugam un contur subtire pentru a distinge clar marginile fiecarui bloc
+                    g.setColor(Color.BLUE);
+                    g.drawRect(drawX, drawY, Tile.TILE_WIDTH, Tile.TILE_HEIGHT);
+                }
             }
         }
     }

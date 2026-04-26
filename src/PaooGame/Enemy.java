@@ -63,10 +63,20 @@ public class Enemy extends Entity {
             int rightFacingRow = 6;
 
             /// 1. ANIMATIA IDLE (Repaus)
-            /// Se preia doar primul cadru (index 0) de pe randul stabilit.
-            BufferedImage[] framesIdle = new BufferedImage[1];
-            framesIdle[0] = sheet.getSubimage(0, rightFacingRow * frameHeight, frameWidth, frameHeight);
-            animIdle = new Animation(500, framesIdle);
+            /// Pe imaginea de 384x256, lupul asezat este la indexul 8, iar urletul la 10.
+            int sitCol = 7;
+            int howlCol = 10;
+
+            BufferedImage[] framesIdle = new BufferedImage[4];
+
+            /// Secventa: Sezut -> Sezut (pauza mai lunga) -> Urlet -> Sezut
+            framesIdle[0] = sheet.getSubimage(sitCol * frameWidth, rightFacingRow * frameHeight, frameWidth, frameHeight);
+            framesIdle[1] = sheet.getSubimage(sitCol * frameWidth, rightFacingRow * frameHeight, frameWidth, frameHeight);
+            framesIdle[2] = sheet.getSubimage(howlCol * frameWidth, rightFacingRow * frameHeight, frameWidth, frameHeight);
+            framesIdle[3] = sheet.getSubimage(sitCol * frameWidth, rightFacingRow * frameHeight, frameWidth, frameHeight);
+
+            /// Setam o viteza mai mica (700ms pe cadru) pentru ca este o actiune de repaus
+            animIdle = new Animation(700, framesIdle);
 
             /// 2. ANIMATIA RUN (Alergare)
             /// Secventa de alergare are 5 lupi pe acest rand.
@@ -159,8 +169,7 @@ public class Enemy extends Entity {
             int renderWidth = 32;
             int renderHeight = 32;
 
-            /// Calculam offset-ul de desenare pentru a centra desenul marit (64)
-            /// peste cutia sa de coliziune (32). -16px pe ambele axe il asaza perfect la centru.
+            /// Calculam offset-ul de desenare pentru a centra desenul
             int drawX = screenX - 1;
             int drawY = screenY - 0;
 

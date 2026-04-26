@@ -1,4 +1,6 @@
-package PaooGame;
+package PaooGame.enemies;
+
+import PaooGame.*;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;

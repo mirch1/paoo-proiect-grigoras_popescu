@@ -40,6 +40,36 @@ public class KeyManager implements KeyListener {
         return keyCode >= 0 && keyCode < keys.length && keys[keyCode];
     }
 
+
+
+    public void Clear() {
+        /*
+         * Resetează toate tastele memorate ca fiind apăsate.
+         *
+         * Este utilă mai ales la:
+         * - schimbarea nivelului;
+         * - revenirea în meniu;
+         * - resetarea inputului după pauză.
+         */
+
+        /// Parcurgem vectorul de taste și punem fiecare poziție pe false.
+        for (int i = 0; i < keys.length; i++) {
+            keys[i] = false;
+        }
+
+        /// Resetăm flag-urile pentru deplasare.
+        up = false;
+        down = false;
+        left = false;
+        right = false;
+
+        /// Resetăm flag-urile pentru acțiuni speciale.
+        escape = false;
+        enter = false;
+        debug = false;
+    }
+
+
     @Override
     public void keyPressed(KeyEvent e) {
         int code = e.getKeyCode();

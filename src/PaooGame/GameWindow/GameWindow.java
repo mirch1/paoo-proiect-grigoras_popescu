@@ -43,59 +43,97 @@ public class GameWindow
         necesare: dimensiuni, pozitionare, operatia de inchidere si modul fullscreen.
 
      */
+    /*! \fn public void BuildGameWindow()
+    \brief Construieste fereastra jocului si canvas-ul pe care se deseneaza scena.
+
+    Observatie:
+    Nu mai folosim Full-Screen Exclusive Mode, deoarece acesta poate produce
+    decalaje vizuale la revenirea din joc in meniul principal.
+ */
     public void BuildGameWindow()
     {
-        /// Daca fereastra a mai fost construita intr-un apel anterior
-        /// se renunta la apel
+        /// Daca fereastra a mai fost construita, nu o reconstruim.
         if(wndFrame != null)
         {
             return;
         }
-        /// Aloca memorie pentru obiectul de tip fereastra si seteaza denumirea
-        /// ce apare in bara de titlu
+
+        /*
+         * Obținem monitorul principal.
+         * Folosim dimensiunile configuratiei grafice, nu Full-Screen Exclusive Mode.
+         */
+        GraphicsDevice device = GraphicsEnvironment
+                .getLocalGraphicsEnvironment()
+                .getDefaultScreenDevice();
+
+        /// Eliberam orice fullscreen exclusiv ramas activ.
+        if (device.getFullScreenWindow() != null) {
+            device.setFullScreenWindow(null);
+        }
+
+        /// Luam dimensiunea reala a zonei ecranului.
+        Rectangle screenBounds = device.getDefaultConfiguration().getBounds();
+
+        /*
+         * Actualizam latimea si inaltimea ferestrei.
+         * Aceste valori sunt folosite ulterior si in Game.Draw() pentru scalare.
+         */
+        wndWidth = screenBounds.width;
+        wndHeight = screenBounds.height;
+
+        /// Cream fereastra principala a jocului.
         wndFrame = new JFrame(wndTitle);
 
-        /// Ascunde marginile si bara de titlu a ferestrei (obligatoriu pentru Fullscreen).
-        /// Aceasta comanda trebuie plasata inainte ca fereastra sa devina vizibila.
+        /// Eliminam bara de titlu si marginile ferestrei.
         wndFrame.setUndecorated(true);
 
-        /// Seteaza dimensiunile ferestrei in pixeli
-        wndFrame.setSize(wndWidth, wndHeight);
-        /// Operatia de inchidere (garanteaza ca si programul este inchis cand fereastra dispare)
+        /// Inchiderea ferestrei inchide aplicatia.
         wndFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        /// Invalideaza redimensionarea ferestrei
-        wndFrame.setResizable(false);
-        /// Recomand ca fereastra sa apara in centrul ecranului.
-        wndFrame.setLocationRelativeTo(null);
 
-        /// Creaza obiectul de tip canvas (panza) pe care se poate desena.
+        /// Nu permitem redimensionarea manuala.
+        wndFrame.setResizable(false);
+
+        /// Dezactivam repaint-ul automat, deoarece desenarea este controlata de game loop.
+        wndFrame.setIgnoreRepaint(true);
+
+        /*
+         * IMPORTANT:
+         * Nu folosim device.setFullScreenWindow(wndFrame).
+         * In schimb, facem o fereastra fara margini pe tot ecranul.
+         */
+        wndFrame.setBounds(0, 0, wndWidth, wndHeight);
+
+        /// Cream canvas-ul pe care va desena jocul.
         canvas = new Canvas();
-        /// Seteaza dimensiunile preferate, minime si maxime pentru canvas.
+
+        /// Dezactivam repaint-ul automat si pentru canvas.
+        canvas.setIgnoreRepaint(true);
+
+        /// Setam dimensiunile canvas-ului egale cu dimensiunile ferestrei.
         canvas.setPreferredSize(new Dimension(wndWidth, wndHeight));
         canvas.setMaximumSize(new Dimension(wndWidth, wndHeight));
         canvas.setMinimumSize(new Dimension(wndWidth, wndHeight));
 
-        /// Adauga obiectul canvas in fereastra
-        wndFrame.add(canvas);
-        /// Redimensioneaza fereastra ca tot ce contine sa poata fi afisat complet
+        /// Folosim BorderLayout pentru ca Canvas-ul sa ocupe toata fereastra.
+        wndFrame.setLayout(new BorderLayout());
+
+        /// Adaugam canvas-ul in centrul ferestrei.
+        wndFrame.add(canvas, BorderLayout.CENTER);
+
+        /// Ajustam fereastra la dimensiunea canvas-ului.
         wndFrame.pack();
 
-        /// Preia controlul placii video si activeaza modul Full-Screen Exclusive (FSEM).
-        /// Prin aceasta metoda, fereastra noastra sare peste Window Manager-ul sistemului de operare.
-        GraphicsEnvironment env = GraphicsEnvironment.getLocalGraphicsEnvironment();
-        GraphicsDevice device = env.getDefaultScreenDevice();
-        try {
-            if (device.isFullScreenSupported()) {
-                device.setFullScreenWindow(wndFrame); // Aceasta linie face fereastra vizibila automat
-            } else {
-                /// Daca sistemul nu suporta fullscreen exclusiv, fereastra este maximizata clasic.
-                wndFrame.setExtendedState(JFrame.MAXIMIZED_BOTH);
-                wndFrame.setVisible(true);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            wndFrame.setVisible(true);
-        }
+        /*
+         * Dupa pack(), setam din nou bounds.
+         * Uneori pack() poate recalcula dimensiunea, asa ca fortam pozitia corecta.
+         */
+        wndFrame.setBounds(0, 0, wndWidth, wndHeight);
+
+        /// Afisam fereastra jocului.
+        wndFrame.setVisible(true);
+
+        /// Cerem focus pe canvas, ca tastatura sa functioneze imediat.
+        canvas.requestFocus();
     }
 
     /*! \fn public int GetWndWidth()
@@ -119,5 +157,31 @@ public class GameWindow
      */
     public Canvas GetCanvas() {
         return canvas;
+    }
+
+
+
+    /*! \fn public void CloseWindow()
+    \brief Inchide corect fereastra jocului si elibereaza orice stare grafica ramasa activa.
+ */
+    public void CloseWindow()
+    {
+        /*
+         * Eliberam orice fullscreen exclusiv ramas activ.
+         * Chiar daca nu il mai folosim, pastram protectia pentru siguranta.
+         */
+        GraphicsDevice device = GraphicsEnvironment
+                .getLocalGraphicsEnvironment()
+                .getDefaultScreenDevice();
+
+        if (device.getFullScreenWindow() != null) {
+            device.setFullScreenWindow(null);
+        }
+
+        /// Inchidem fereastra jocului daca exista.
+        if (wndFrame != null) {
+            wndFrame.dispose();
+            wndFrame = null;
+        }
     }
 }

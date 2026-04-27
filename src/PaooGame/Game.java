@@ -43,6 +43,7 @@ public class Game implements Runnable
     /// VARIABILE PENTRU PAUZA SI MENIU
     private boolean         isPaused = false;       /*!< Flag care indica daca jocul este in pauza.*/
     private int             pauseMenuSelection = 0; /*!< Indexul optiunii selectate in meniul de pauza.*/
+    private volatile boolean returnToMenuRequested = false;
 
     /// VARIABILE PENTRU DEBUG MODE (Tasta H)
     public static boolean   showHitboxes = false;   /*!< Variabila globala pentru afisarea coliziunilor.*/
@@ -91,36 +92,106 @@ public class Game implements Runnable
     /*! \fn public void run()
         \brief Implementarea Game-Loop-ului cu limitare la 60 FPS si contorizare pentru Overlay-ul de Debug.
      */
-    public void run()
-    {
+    public void run() {
+        /// Inițializează fereastra, resursele, harta, camera și player-ul.
         InitGame();
+
+        /// Timpul frame-ului anterior.
         long oldTime = System.nanoTime();
+
+        /// Timpul frame-ului curent.
         long curentTime;
 
-        final int framesPerSecond   = 60;
-        final double timeFrame      = 1000000000 / framesPerSecond;
+        /// Numărul dorit de cadre pe secundă.
+        final int framesPerSecond = 60;
 
-        /// Variabile locale pentru a calcula FPS-ul in timp real
+        /// Durata unui frame exprimată în nanosecunde.
+        final double timeFrame = 1000000000 / framesPerSecond;
+
+        /// Contor pentru FPS.
         int frames = 0;
+
+        /// Timer folosit pentru actualizarea valorii currentFPS o dată pe secundă.
         long timer = System.currentTimeMillis();
 
-        while (runState == true)
-        {
+        /*
+         * Bucla principală a jocului.
+         * Cât timp runState este true, jocul actualizează starea și redesenează scena.
+         */
+        while (runState == true) {
+            /// Citim timpul curent.
             curentTime = System.nanoTime();
-            if((curentTime - oldTime) > timeFrame)
-            {
+
+            /*
+             * Dacă a trecut suficient timp pentru un nou frame,
+             * actualizăm logica și desenăm scena.
+             */
+            if ((curentTime - oldTime) > timeFrame) {
+                /// Actualizează logica jocului: input, player, hartă, pauză, tranziții etc.
                 Update();
+
+                /*
+                 * Foarte important:
+                 * Dacă în Update() s-a cerut oprirea jocului, nu mai apelăm Draw().
+                 *
+                 * Motiv:
+                 * Dacă jucătorul alege RETURN TO MENU, fereastra jocului urmează să fie
+                 * închisă. Dacă Draw() mai încearcă să facă bs.show() pe un Canvas invalid,
+                 * apare eroarea:
+                 *
+                 * java.lang.IllegalStateException: Component must have a valid peer
+                 */
+                if (!runState) {
+                    break;
+                }
+
+                /// Desenează frame-ul curent.
                 Draw();
+
+                /// Actualizăm timpul frame-ului anterior.
                 oldTime = curentTime;
-                frames++; /// Am randat inca un cadru
+
+                /// Creștem contorul de frame-uri.
+                frames++;
             }
 
-            /// Daca a trecut fix o secunda, actualizam variabila statica si resetam
+            /*
+             * Actualizăm FPS-ul afișat o dată pe secundă.
+             */
             if (System.currentTimeMillis() - timer > 1000) {
                 currentFPS = frames;
                 frames = 0;
                 timer += 1000;
             }
+        }
+
+        /*
+         * Daca jocul s-a oprit deoarece jucatorul a ales RETURN TO MENU,
+         * inchidem fereastra jocului si recream meniul principal.
+         */
+        if (returnToMenuRequested) {
+            SwingUtilities.invokeLater(() -> {
+                /// Inchidem corect fereastra jocului.
+                if (wnd != null) {
+                    wnd.CloseWindow();
+                }
+
+                /*
+                 * Sincronizam toolkit-ul grafic.
+                 * Ajuta la evitarea artefactelor vizuale dupa inchiderea ferestrei jocului.
+                 */
+                Toolkit.getDefaultToolkit().sync();
+
+                /*
+                 * Cream meniul intr-un pas Swing separat.
+                 * Asa evitam ca meniul sa fie construit in aceeasi stare grafica in care
+                 * tocmai s-a inchis fereastra jocului.
+                 */
+                SwingUtilities.invokeLater(() -> {
+                    MenuWindow menu = new MenuWindow();
+                    menu.setVisible(true);
+                });
+            });
         }
     }
 
@@ -136,11 +207,32 @@ public class Game implements Runnable
 
     public synchronized void StopGame()
     {
+        /*
+         * Oprește bucla principală a jocului.
+         * Metoda este sincronizată deoarece modifică starea thread-ului jocului.
+         */
         if(runState == true)
         {
+            /// Setăm runState pe false, ceea ce oprește bucla while din run().
             runState = false;
-            try { gameThread.join(); }
-            catch(InterruptedException ex) { ex.printStackTrace(); }
+
+            /*
+             * Dacă StopGame() este apelată chiar din thread-ul jocului,
+             * NU avem voie să facem join() pe același thread.
+             *
+             * Altfel, thread-ul ar aștepta după el însuși și aplicația s-ar putea bloca.
+             */
+            if (Thread.currentThread() == gameThread) {
+                return;
+            }
+
+            /// Așteptăm terminarea thread-ului jocului, dacă suntem din alt thread.
+            try {
+                gameThread.join();
+            }
+            catch(InterruptedException ex) {
+                ex.printStackTrace();
+            }
         }
     }
 
@@ -218,28 +310,72 @@ public class Game implements Runnable
     /*! \fn private void executePauseMenuAction()
         \brief Executa logica butonului apasat in meniul de pauza.
      */
+
     private void executePauseMenuAction() {
+        /*
+         * Execută acțiunea corespunzătoare opțiunii selectate
+         * din meniul de pauză.
+         */
         switch (pauseMenuSelection) {
             case 0: /// SETTINGS
+                /*
+                 * Deschidem dialogul de setări peste fereastra jocului.
+                 * Folosim invokeLater deoarece modificările Swing trebuie făcute
+                 * pe Event Dispatch Thread.
+                 */
+                Window owner = SwingUtilities.getWindowAncestor(wnd.GetCanvas());
+                SwingUtilities.invokeLater(() -> SettingsDialog.showSettings(owner));
                 break;
+
             case 1: /// RETURN TO MENU
-                StopGame();
-                JFrame frame = (JFrame) SwingUtilities.getWindowAncestor(wnd.GetCanvas());
-                if (frame != null) frame.dispose();
-                MenuWindow menu = new MenuWindow();
-                menu.setVisible(true);
+                /*
+                 * Cerem oprirea jocului și revenirea în meniul principal.
+                 * Nu închidem direct fereastra aici, pentru că suntem în logica jocului.
+                 */
+                returnToMainMenu();
                 break;
+
             case 2: /// EXIT
+            /// Închide complet aplicația.
                 System.exit(0);
                 break;
         }
     }
+
+
+
+    private void openSettingsFromPause() {
+        Window owner = SwingUtilities.getWindowAncestor(wnd.GetCanvas());
+
+        SwingUtilities.invokeLater(() -> {
+            SettingsDialog.showSettings(owner);
+        });
+    }
+
+    private void returnToMainMenu() {
+        /*
+         * Marcăm faptul că după oprirea buclei jocului trebuie să revenim
+         * în meniul principal.
+         */
+        returnToMenuRequested = true;
+
+        /*
+         * Oprim bucla principală.
+         * După aceasta, metoda run() va ieși din while și va crea meniul principal.
+         */
+        runState = false;
+    }
+
 
     /*! \fn private void Draw()
         \brief Metoda responsabila de randarea tuturor elementelor grafice pe ecran.
      */
     private void Draw()
     {
+        if (wnd == null || wnd.GetCanvas() == null || !wnd.GetCanvas().isDisplayable()) {
+            return;
+        }
+
         bs = wnd.GetCanvas().getBufferStrategy();
         if(bs == null)
         {
@@ -315,7 +451,9 @@ public class Game implements Runnable
                 }
             }
         }
-
+        if (GameSettings.cinematicMode) {
+            drawCinematicVignette(g2d);
+        }
         /// 5. OVERLAY DEVELOPER (FPS si Mod Debug) - Desenat ultimul, sa fie peste orice
         if (showHitboxes) {
             g2d.setColor(Color.YELLOW);
@@ -327,13 +465,81 @@ public class Game implements Runnable
             g2d.drawString("Mod Debug: ON", 15, 50);
         }
 
-        bs.show();
+        if (runState && wnd.GetCanvas().isDisplayable()) {
+            bs.show();
+        }
+
         g.dispose();
     }
 
+    private void drawCinematicVignette(Graphics2D g2d) {
+        // Benzi cinematice sus-jos
+        g2d.setColor(new Color(0, 0, 0, 70));
+        g2d.fillRect(0, 0, LOGICAL_WIDTH, 38);
+        g2d.fillRect(0, LOGICAL_HEIGHT - 38, LOGICAL_WIDTH, 38);
+
+        // Umbra laterala stanga
+        GradientPaint leftShadow = new GradientPaint(
+                0, 0, new Color(0, 0, 0, 85),
+                90, 0, new Color(0, 0, 0, 0)
+        );
+        g2d.setPaint(leftShadow);
+        g2d.fillRect(0, 0, 90, LOGICAL_HEIGHT);
+
+        // Umbra laterala dreapta
+        GradientPaint rightShadow = new GradientPaint(
+                LOGICAL_WIDTH, 0, new Color(0, 0, 0, 85),
+                LOGICAL_WIDTH - 90, 0, new Color(0, 0, 0, 0)
+        );
+        g2d.setPaint(rightShadow);
+        g2d.fillRect(LOGICAL_WIDTH - 90, 0, 90, LOGICAL_HEIGHT);
+    }
+
     /*! \fn private void loadLevel(int level)
-        \brief Instanteaza si reseteaza harta si entitatile corespunzatoare noului nivel.
-     */
+       \brief Instanteaza si reseteaza harta si entitatile corespunzatoare noului nivel.
+    */
+
+    private void setPlayerSpawn(int tileCol, int tileRow) {
+        /*
+         * Calculează poziția de spawn a player-ului pornind de la coordonate de tile.
+         *
+         * tileCol = coloana din hartă
+         * tileRow = rândul din hartă
+         *
+         * Conversia este:
+         * poziție în pixeli = poziție tile * dimensiune tile
+         */
+
+        /// Calculăm coordonata X în pixeli.
+        float spawnX = tileCol * Tile.TILE_WIDTH + (Tile.TILE_WIDTH - player.GetWidth()) / 2.0f;
+
+        /// Calculăm coordonata Y în pixeli.
+        float spawnY = tileRow * Tile.TILE_HEIGHT + (Tile.TILE_HEIGHT - player.GetHeight()) / 2.0f;
+
+        /// Mutăm player-ul la noua poziție.
+        player.setPosition(spawnX, spawnY);
+
+        /*
+         * Recentram camera pe player după schimbarea nivelului.
+         * Fără acest pas, camera poate rămâne raportată la poziția din nivelul anterior.
+         */
+        if (camera != null && map != null) {
+            camera.CenterOnPlayer(player, map);
+        }
+
+        /*
+         * Curățăm tastele apăsate.
+         *
+         * Motiv:
+         * Dacă player-ul intră în nivelul următor ținând apăsată o tastă,
+         * jocul poate aplica imediat încă o deplasare după spawn.
+         * De aceea părea că personajul apare mai încolo decât ar trebui.
+         */
+        if (keyManager != null) {
+            keyManager.Clear();
+        }
+    }
+
     private void loadLevel(int level) {
         currentLevel = level;
 
@@ -342,17 +548,29 @@ public class Game implements Runnable
         skeleton = null;
 
         if (level == 1) {
+            /// Încărcăm harta primului nivel.
             map = new Map("res/maps/level1.txt");
 
-            if (player == null) player = new Player(10 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT);
-            else player.setPosition(10 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT);
+            /*
+             * Dacă player-ul nu există încă, îl creăm.
+             * Poziția inițială va fi apoi setată prin setPlayerSpawn().
+             */
+            if (player == null) {
+                player = new Player(10 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT);
+            }
+
+            /// Spawn-ul player-ului în nivelul 1.
+            setPlayerSpawn(10, 14);
 
             /// Instantiem doar inamicul corespunzator Nivelului 1
             wolf = new Enemy(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
         }
         else if (level == 2) {
+            /// Încărcăm harta celui de-al doilea nivel.
             map = new Map("res/maps/level2.txt");
-            player.setPosition(9 * Tile.TILE_WIDTH, 13 * Tile.TILE_HEIGHT);
+
+            /// Spawn-ul player-ului în nivelul 2.
+            setPlayerSpawn(9, 13);
 
             /// spawn pointul scheletului (Coloana 5, Randul 6)
             int liberX = 5;
@@ -361,8 +579,9 @@ public class Game implements Runnable
             skeleton = new Skeleton(liberX * Tile.TILE_WIDTH, liberY * Tile.TILE_HEIGHT, player);
         }
         else if (level == 3) {
+            /// Încărcăm harta celui de-al treilea nivel.
             map = new Map("res/maps/level3.txt");
-            player.setPosition(5 * Tile.TILE_WIDTH, 10 * Tile.TILE_HEIGHT);
+            setPlayerSpawn(9, 13);
 
             /// In Nivelul 3 jucatorul va intalni provocari noi (Inamici setati temporar pe null)
         }
@@ -398,4 +617,3 @@ public class Game implements Runnable
 
     public int GetWndWidth() { return wnd.GetWndWidth(); }
     public int GetWndHeight() { return wnd.GetWndHeight(); }
-}

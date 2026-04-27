@@ -617,3 +617,4 @@ public class Game implements Runnable
 
     public int GetWndWidth() { return wnd.GetWndWidth(); }
     public int GetWndHeight() { return wnd.GetWndHeight(); }
+}

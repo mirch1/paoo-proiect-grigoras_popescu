@@ -20,81 +20,144 @@ public class MenuWindow extends JFrame {
         \brief Constructorul ferestrei de meniu.
      */
     public MenuWindow() {
-        // --- PREGĂTIRE FEREASTRĂ ---
-        setUndecorated(true); // Fără margini (OBLIGATORIU pentru fullscreen curat)
+        /// Elimină bara de titlu și marginile ferestrei.
+        setUndecorated(true);
+
+        /// Setează titlul intern al ferestrei.
         setTitle("Aethelgard: Rise of the Fallen Crown");
 
-        // Preluăm rezoluția dinamică a sistemului de operare (ex: 1920x1080)
-        Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
-        screenWidth = screenSize.width;
-        screenHeight = screenSize.height;
-
-        setSize(screenWidth, screenHeight);
+        /// La apăsarea butonului X, aplicația se închide complet.
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLocationRelativeTo(null);
+
+        /// Nu permitem redimensionarea manuală a ferestrei.
         setResizable(false);
 
-        // --- CONSTRUIRE PANOU MENIU ---
+        /*
+         * Obținem monitorul principal pe care rulează aplicația.
+         *
+         * Observație importantă:
+         * Nu mai folosim setFullScreenWindow(this) pentru meniul principal,
+         * deoarece fullscreen-ul exclusiv poate rămâne într-o stare grafică
+         * incorectă după ce revenim din fereastra jocului.
+         */
+        GraphicsDevice device = GraphicsEnvironment
+                .getLocalGraphicsEnvironment()
+                .getDefaultScreenDevice();
+
+        /// Dacă există o fereastră rămasă în fullscreen exclusiv, o eliberăm.
+        if (device.getFullScreenWindow() != null) {
+            device.setFullScreenWindow(null);
+        }
+
+        /// Luăm dimensiunile reale ale ecranului principal.
+        Rectangle screenBounds = device.getDefaultConfiguration().getBounds();
+
+        /// Salvăm lățimea și înălțimea pentru poziționarea elementelor din meniu.
+        screenWidth = screenBounds.width;
+        screenHeight = screenBounds.height;
+
+        /// Facem fereastra să ocupe tot ecranul, dar fără fullscreen exclusiv.
+        setBounds(screenBounds);
+
+        /// Creăm panoul personalizat al meniului.
         MenuPanel panel = new MenuPanel();
+
+        /// Folosim layout null deoarece poziționăm manual butoanele.
         panel.setLayout(null);
 
-        // --- CALCULARE COORDONATE PENTRU BUTOANE ---
-        // Axa X este centrată scăzând lățimea butonului din lățimea totală a ecranului
+        /// Setăm dimensiunea preferată a panoului.
+        panel.setPreferredSize(new Dimension(screenWidth, screenHeight));
+
+        /// Dimensiunile butoanelor principale.
         int buttonWidth = 200;
         int buttonHeight = 52;
-        int spacing = 15; // Spațiul dintre butoane
 
+        /// Spațiul vertical dintre butoane.
+        int spacing = 15;
+
+        /// Calculăm coordonata X astfel încât butoanele să fie centrate.
         int centerX = (screenWidth - buttonWidth) / 2;
-        // Incepem sa desenam butoanele putin mai jos de jumatatea ecranului
+
+        /// Poziția Y de început pentru primul buton.
         int startY = screenHeight / 2 + 20;
 
-        // --- ADĂUGARE BUTOANE ---
+        /// Butonul pentru pornirea unui joc nou.
         JButton playButton = createMenuButton("PLAY");
+
+        /// Poziționăm butonul PLAY.
         playButton.setBounds(centerX, startY, buttonWidth, buttonHeight);
+
+        /// La apăsarea butonului PLAY, meniul se închide și pornește jocul.
         playButton.addActionListener(e -> {
+            /// Închidem fereastra de meniu.
             dispose();
+
+            /// Creăm o nouă instanță de Game folosind dimensiunile ecranului.
             Game paooGame = new Game("Aethelgard", screenWidth, screenHeight);
+
+            /// Pornim bucla principală a jocului.
             paooGame.StartGame();
         });
+
+        /// Adăugăm butonul PLAY pe panou.
         panel.add(playButton);
 
+        /// Butonul pentru încărcarea jocului.
         JButton loadButton = createMenuButton("LOAD GAME");
+
+        /// Poziționăm butonul LOAD GAME sub PLAY.
         loadButton.setBounds(centerX, startY + buttonHeight + spacing, buttonWidth, buttonHeight);
+
+        /// Momentan LOAD GAME este doar placeholder pentru etapa cu baza de date.
         loadButton.addActionListener(e ->
                 JOptionPane.showMessageDialog(this, "Load Game va fi implementat in saptamana 12.")
         );
+
+        /// Adăugăm butonul LOAD GAME pe panou.
         panel.add(loadButton);
 
+        /// Butonul pentru închiderea aplicației.
         JButton exitButton = createMenuButton("EXIT");
+
+        /// Poziționăm butonul EXIT sub LOAD GAME.
         exitButton.setBounds(centerX, startY + (buttonHeight + spacing) * 2, buttonWidth, buttonHeight - 8);
+
+        /// La apăsarea lui EXIT, aplicația se închide complet.
         exitButton.addActionListener(e -> System.exit(0));
+
+        /// Adăugăm butonul EXIT pe panou.
         panel.add(exitButton);
 
-        // Butonul de Setări ancorat în dreapta sus
+        /// Butonul de SETTINGS din colțul dreapta sus.
         JButton settingsButton = createTopButton("SETTINGS");
+
+        /// Poziționăm butonul SETTINGS raportat la marginea dreaptă a ecranului.
         settingsButton.setBounds(screenWidth - 165, 22, 130, 34);
-        settingsButton.addActionListener(e ->
-                JOptionPane.showMessageDialog(this, "Settings este momentan placeholder.")
-        );
+
+        /*
+         * Deschide dialogul de setări.
+         * Acesta folosește fereastra curentă ca owner, pentru a apărea centrat
+         * peste meniul principal.
+         */
+        settingsButton.addActionListener(e -> SettingsDialog.showSettings(this));
+
+        /// Adăugăm butonul SETTINGS pe panou.
         panel.add(settingsButton);
 
+        /// Setăm panoul ca element principal al ferestrei.
         setContentPane(panel);
 
-        // --- ACTIVARE FULLSCREEN EXCLUSIV ---
-        GraphicsEnvironment env = GraphicsEnvironment.getLocalGraphicsEnvironment();
-        GraphicsDevice device = env.getDefaultScreenDevice();
-        try {
-            if (device.isFullScreenSupported()) {
-                device.setFullScreenWindow(this);
-            } else {
-                setExtendedState(JFrame.MAXIMIZED_BOTH);
-                setVisible(true);
-            }
-        } catch (Exception e) {
-            setVisible(true);
-        }
+        /// Forțăm recalcularea layout-ului.
+        validate();
     }
 
+    private void leaveFullScreenMode() {
+        GraphicsDevice device = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
+
+        if (device.getFullScreenWindow() == this) {
+            device.setFullScreenWindow(null);
+        }
+    }
     // Funcție utilitară pentru crearea butoanelor principale
     private JButton createMenuButton(String text) {
         JButton button = new JButton(text);

@@ -14,53 +14,51 @@ import java.awt.image.BufferStrategy;
 /*! \class Game
     \brief Clasa principala a proiectului. Gestioneaza Game-Loop-ul, starile jocului si randarea.
  */
-public class Game implements Runnable
-{
-    private GameWindow      wnd;                /*!< Fereastra in care se va desena tabla jocului.*/
-    private boolean         runState;           /*!< Flag ce indica starea firului de executie.*/
-    private Thread          gameThread;         /*!< Referinta catre thread-ul de update si draw.*/
-    private BufferStrategy  bs;                 /*!< Mecanism pentru organizarea memoriei video (Triple Buffering).*/
+public class Game implements Runnable {
+    private GameWindow wnd;                /*!< Fereastra in care se va desena tabla jocului.*/
+    private boolean runState;           /*!< Flag ce indica starea firului de executie.*/
+    private Thread gameThread;         /*!< Referinta catre thread-ul de update si draw.*/
+    private BufferStrategy bs;                 /*!< Mecanism pentru organizarea memoriei video (Triple Buffering).*/
 
-    private Map             map;                /*!< Referinta catre harta curenta.*/
-    private KeyManager      keyManager;         /*!< Referinta catre managerul de tastatura.*/
-    private Camera          camera;             /*!< Referinta catre camera de urmarire a jucatorului.*/
+    private Map map;                /*!< Referinta catre harta curenta.*/
+    private KeyManager keyManager;         /*!< Referinta catre managerul de tastatura.*/
+    private Camera camera;             /*!< Referinta catre camera de urmarire a jucatorului.*/
 
     /// ENTITATILE JOCULUI
-    private Player          player;             /*!< Referinta catre jucatorul principal.*/
-    private Enemy           wolf;               /*!< Referinta catre inamicul Lup (Nivel 1).*/
-    private Skeleton        skeleton;           /*!< Referinta catre inamicul Schelet (Nivel 2).*/
+    private Player player;             /*!< Referinta catre jucatorul principal.*/
+    private Enemy wolf;               /*!< Referinta catre inamicul Lup (Nivel 1).*/
+    private Skeleton skeleton;           /*!< Referinta catre inamicul Schelet (Nivel 2).*/
 
     /// VARIABILE PENTRU NIVELURI SI TRANZITII
-    private int             currentLevel;       /*!< Numarul nivelului curent.*/
-    private int             transitionCooldown; /*!< Temporizator pentru a preveni tranzitiile instantanee repetate.*/
+    private int currentLevel;       /*!< Numarul nivelului curent.*/
+    private int transitionCooldown; /*!< Temporizator pentru a preveni tranzitiile instantanee repetate.*/
 
     /// DIMENSIUNI LOGICE ALE ECRANULUI
-    private final int       LOGICAL_WIDTH = 800;  /*!< Latimea logica a ferestrei.*/
-    private final int       LOGICAL_HEIGHT = 600; /*!< Inaltimea logica a ferestrei.*/
+    private final int LOGICAL_WIDTH = 800;  /*!< Latimea logica a ferestrei.*/
+    private final int LOGICAL_HEIGHT = 600; /*!< Inaltimea logica a ferestrei.*/
 
-    private Graphics        g;                  /*!< Referinta catre contextul grafic.*/
+    private Graphics g;                  /*!< Referinta catre contextul grafic.*/
 
     /// VARIABILE PENTRU PAUZA SI MENIU
-    private boolean         isPaused = false;       /*!< Flag care indica daca jocul este in pauza.*/
-    private int             pauseMenuSelection = 0; /*!< Indexul optiunii selectate in meniul de pauza.*/
+    private boolean isPaused = false;       /*!< Flag care indica daca jocul este in pauza.*/
+    private int pauseMenuSelection = 0; /*!< Indexul optiunii selectate in meniul de pauza.*/
     private volatile boolean returnToMenuRequested = false;
 
     /// VARIABILE PENTRU DEBUG MODE (Tasta H)
-    public static boolean   showHitboxes = false;   /*!< Variabila globala pentru afisarea coliziunilor.*/
-    public static int       currentFPS = 0;         /*!< Stocheaza numarul de cadre pe secunda calculate.*/
+    public static boolean showHitboxes = false;   /*!< Variabila globala pentru afisarea coliziunilor.*/
+    public static int currentFPS = 0;         /*!< Stocheaza numarul de cadre pe secunda calculate.*/
 
     /// MEMORAREA STARII TASTELOR (Pentru a detecta o singura apasare)
-    private boolean         lastEscapeState = false;
-    private boolean         lastUpState = false;
-    private boolean         lastDownState = false;
-    private boolean         lastEnterState = false;
-    private boolean         lastDebugState = false;
+    private boolean lastEscapeState = false;
+    private boolean lastUpState = false;
+    private boolean lastDownState = false;
+    private boolean lastEnterState = false;
+    private boolean lastDebugState = false;
 
     /*! \fn public Game(String title, int width, int height)
         \brief Constructorul clasei Game.
      */
-    public Game(String title, int width, int height)
-    {
+    public Game(String title, int width, int height) {
         wnd = new GameWindow(title, width, height);
         runState = false;
     }
@@ -68,8 +66,7 @@ public class Game implements Runnable
     /*! \fn private void InitGame()
         \brief Initializeaza resursele, fereastra si obiectele de joc.
      */
-    private void InitGame()
-    {
+    private void InitGame() {
         wnd.BuildGameWindow();
         Assets.Init();
 
@@ -195,24 +192,20 @@ public class Game implements Runnable
         }
     }
 
-    public synchronized void StartGame()
-    {
-        if(runState == false)
-        {
+    public synchronized void StartGame() {
+        if (runState == false) {
             runState = true;
             gameThread = new Thread(this);
             gameThread.start();
         }
     }
 
-    public synchronized void StopGame()
-    {
+    public synchronized void StopGame() {
         /*
          * Oprește bucla principală a jocului.
          * Metoda este sincronizată deoarece modifică starea thread-ului jocului.
          */
-        if(runState == true)
-        {
+        if (runState == true) {
             /// Setăm runState pe false, ceea ce oprește bucla while din run().
             runState = false;
 
@@ -229,8 +222,7 @@ public class Game implements Runnable
             /// Așteptăm terminarea thread-ului jocului, dacă suntem din alt thread.
             try {
                 gameThread.join();
-            }
-            catch(InterruptedException ex) {
+            } catch (InterruptedException ex) {
                 ex.printStackTrace();
             }
         }
@@ -239,8 +231,7 @@ public class Game implements Runnable
     /*! \fn private void Update()
         \brief Actualizeaza logica jocului, verifica intrarile utilizatorului si gestioneaza starea entitatilor.
      */
-    private void Update()
-    {
+    private void Update() {
         /// Citim starea tastelor
         keyManager.Update();
 
@@ -343,15 +334,6 @@ public class Game implements Runnable
     }
 
 
-
-    private void openSettingsFromPause() {
-        Window owner = SwingUtilities.getWindowAncestor(wnd.GetCanvas());
-
-        SwingUtilities.invokeLater(() -> {
-            SettingsDialog.showSettings(owner);
-        });
-    }
-
     private void returnToMainMenu() {
         /*
          * Marcăm faptul că după oprirea buclei jocului trebuie să revenim
@@ -370,17 +352,19 @@ public class Game implements Runnable
     /*! \fn private void Draw()
         \brief Metoda responsabila de randarea tuturor elementelor grafice pe ecran.
      */
-    private void Draw()
-    {
+    private void Draw() {
         if (wnd == null || wnd.GetCanvas() == null || !wnd.GetCanvas().isDisplayable()) {
             return;
         }
 
         bs = wnd.GetCanvas().getBufferStrategy();
-        if(bs == null)
-        {
-            try { wnd.GetCanvas().createBufferStrategy(3); return; }
-            catch (Exception e) { e.printStackTrace(); }
+        if (bs == null) {
+            try {
+                wnd.GetCanvas().createBufferStrategy(3);
+                return;
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
 
         g = bs.getDrawGraphics();
@@ -401,9 +385,9 @@ public class Game implements Runnable
         /// Calculam un offset in cazul in care harta este mai mica decat ecranul pentru a o centra
         int offsetX = 0;
         int offsetY = 0;
-        if(map != null) {
-            if(map.getPixelWidth() < LOGICAL_WIDTH) offsetX = (LOGICAL_WIDTH - map.getPixelWidth()) / 2;
-            if(map.getPixelHeight() < LOGICAL_HEIGHT) offsetY = (LOGICAL_HEIGHT - map.getPixelHeight()) / 2;
+        if (map != null) {
+            if (map.getPixelWidth() < LOGICAL_WIDTH) offsetX = (LOGICAL_WIDTH - map.getPixelWidth()) / 2;
+            if (map.getPixelHeight() < LOGICAL_HEIGHT) offsetY = (LOGICAL_HEIGHT - map.getPixelHeight()) / 2;
         }
 
         /// 1. Desenam Harta
@@ -424,7 +408,11 @@ public class Game implements Runnable
             player.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
 
-        /// 4. Desenam Meniul de Pauza (Overlay Semi-Transparent)
+        /// 4. Desenam foreground-ul hartii, adica obiectele care trebuie sa apara peste player.
+        if (map != null && camera != null) {
+            map.DrawForeground(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
+        /// 5. Desenam Meniul de Pauza (Overlay Semi-Transparent)
         if (isPaused) {
             g2d.setColor(new Color(0, 0, 0, 180));
             g2d.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
@@ -454,7 +442,7 @@ public class Game implements Runnable
         if (GameSettings.cinematicMode) {
             drawCinematicVignette(g2d);
         }
-        /// 5. OVERLAY DEVELOPER (FPS si Mod Debug) - Desenat ultimul, sa fie peste orice
+        /// 6. OVERLAY DEVELOPER (FPS si Mod Debug) - Desenat ultimul, sa fie peste orice
         if (showHitboxes) {
             g2d.setColor(Color.YELLOW);
             g2d.setFont(new Font("Consolas", Font.BOLD, 20));
@@ -549,7 +537,11 @@ public class Game implements Runnable
 
         if (level == 1) {
             /// Încărcăm harta primului nivel.
-            map = new Map("res/maps/level1.txt");
+            map = new Map(
+                    "res/maps/level1_base.png",
+                    "res/maps/level1_foreground.png",
+                    "res/maps/harta_primul_nivel.tmx"
+            );
 
             /*
              * Dacă player-ul nu există încă, îl creăm.
@@ -564,8 +556,7 @@ public class Game implements Runnable
 
             /// Instantiem doar inamicul corespunzator Nivelului 1
             wolf = new Enemy(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
-        }
-        else if (level == 2) {
+        } else if (level == 2) {
             /// Încărcăm harta celui de-al doilea nivel.
             map = new Map("res/maps/level2.txt");
 
@@ -577,8 +568,7 @@ public class Game implements Runnable
             int liberY = 6;
 
             skeleton = new Skeleton(liberX * Tile.TILE_WIDTH, liberY * Tile.TILE_HEIGHT, player);
-        }
-        else if (level == 3) {
+        } else if (level == 3) {
             /// Încărcăm harta celui de-al treilea nivel.
             map = new Map("res/maps/level3.txt");
             setPlayerSpawn(9, 13);
@@ -595,26 +585,38 @@ public class Game implements Runnable
     private void checkLevelTransition() {
         if (transitionCooldown > 0) return;
 
-        /// Aflam coordonata centrului jucatorului pe axa X pentru a verifica alinierea pe carare
-        int playerCenterX = (int) player.GetX() + player.GetWidth() / 2;
+        /*
+         * Pentru tranzitii folosim pozitia picioarelor, nu centrul sprite-ului.
+         * Altfel trecerea se activeaza prea devreme, pentru ca sprite-ul playerului
+         * este desenat mai sus decat hitbox-ul real.
+         */
+        int playerFeetX = (int) player.GetFeetCenterX();
+        int playerFeetY = (int) player.GetFeetBottomY();
 
         if (currentLevel == 1) {
-            /// Daca jucatorul a atins latura de sus (Y <= 20) in intervalul de X stabilit
-            if (player.GetY() <= 20 && playerCenterX >= 8 * Tile.TILE_WIDTH && playerCenterX <= 12 * Tile.TILE_WIDTH) {
+            /*
+             * Nivelul 1 nu mai trece in dungeon prin poarta principala.
+             * Tranzitia se face doar cand picioarele player-ului ajung
+             * pe tile-ul marcat in layer-ul TransitionToDungeon.
+             */
+            if (map.isTransitionAtPixel(playerFeetX, playerFeetY)) {
                 loadLevel(2);
             }
         }
         else if (currentLevel == 2) {
-            /// Iesire Nivel 2: Ajusteaza cifrele (ex. 8 si 12) la coordonatele cararii din level2.txt
+            /// Iesire Nivel 2: ramane logica veche catre nivelul 3.
             int iesireX_Stanga = 8;
             int iesireX_Dreapta = 12;
 
-            if (player.GetY() <= 20 && playerCenterX >= iesireX_Stanga * Tile.TILE_WIDTH && playerCenterX <= iesireX_Dreapta * Tile.TILE_WIDTH) {
+            int playerCenterX = (int) player.GetX() + player.GetWidth() / 2;
+
+            if (player.GetY() <= 20 &&
+                    playerCenterX >= iesireX_Stanga * Tile.TILE_WIDTH &&
+                    playerCenterX <= iesireX_Dreapta * Tile.TILE_WIDTH) {
                 loadLevel(3);
             }
         }
     }
-
-    public int GetWndWidth() { return wnd.GetWndWidth(); }
-    public int GetWndHeight() { return wnd.GetWndHeight(); }
 }
+
+

@@ -90,4 +90,25 @@ public abstract class Entity {
         this.x = x;
         this.y = y;
     }
+
+    /*! \fn public float GetFeetCenterX()
+    \brief Returneaza coordonata X a centrului hitbox-ului de la picioare.
+ */
+    public float GetFeetCenterX() {
+        return x + feetOffsetX + feetWidth / 2.0f;
+    }
+
+    /*! \fn public float GetFeetCenterY()
+        \brief Returneaza coordonata Y a centrului hitbox-ului de la picioare.
+     */
+    public float GetFeetCenterY() {
+        return y + feetOffsetY + feetHeight / 2.0f;
+    }
+
+    /*! \fn public float GetFeetBottomY()
+        \brief Returneaza coordonata Y de jos a hitbox-ului de la picioare.
+     */
+    public float GetFeetBottomY() {
+        return y + feetOffsetY + feetHeight - 1;
+    }
 }

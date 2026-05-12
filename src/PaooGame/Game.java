@@ -55,12 +55,19 @@ public class Game implements Runnable {
     private boolean lastEnterState = false;
     private boolean lastDebugState = false;
 
+    private boolean loadSavedGame = false;
+    private SaveGameState savedGameState = null;
+
     /*! \fn public Game(String title, int width, int height)
         \brief Constructorul clasei Game.
      */
     public Game(String title, int width, int height) {
+        this(title, width, height, false);
+    }
+    public Game(String title, int width, int height, boolean loadSavedGame) {
         wnd = new GameWindow(title, width, height);
         runState = false;
+        this.loadSavedGame = loadSavedGame;
     }
 
     /*! \fn private void InitGame()
@@ -69,21 +76,42 @@ public class Game implements Runnable {
     private void InitGame() {
         wnd.BuildGameWindow();
         Assets.Init();
-
         currentLevel = 1;
         transitionCooldown = 0;
 
-        /// Cream managerul de taste si il atasam ferestrei (Canvas-ului)
+/// Cream managerul de taste si il atasam ferestrei (Canvas-ului)
         keyManager = new KeyManager();
         wnd.GetCanvas().addKeyListener(keyManager);
         wnd.GetCanvas().setFocusable(true);
         wnd.GetCanvas().requestFocus();
 
-        /// Incarcam nivelul initial
-        loadLevel(currentLevel);
-
-        /// Initializam camera (dimensiunile trebuie sa corespunda cu LOGICAL_WIDTH / HEIGHT)
+/// Initializam camera inainte de incarcarea nivelului.
+/// Astfel camera poate fi recentrata corect si la New Game, si la Load Game.
         camera = new Camera(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+
+        if (loadSavedGame) {
+            savedGameState = SaveManager.loadGame();
+
+            if (savedGameState != null) {
+                loadLevel(savedGameState.getLevel());
+
+                if (player != null) {
+                    player.setPosition(savedGameState.getPlayerX(), savedGameState.getPlayerY());
+
+                    if (camera != null && map != null) {
+                        camera.CenterOnPlayer(player, map);
+                    }
+                }
+            } else {
+                /// Daca nu exista salvare, pornim joc nou.
+                currentLevel = 1;
+                loadLevel(currentLevel);
+            }
+        } else {
+            /// Joc nou.
+            currentLevel = 1;
+            loadLevel(currentLevel);
+        }
     }
 
     /*! \fn public void run()
@@ -251,11 +279,11 @@ public class Game implements Runnable {
         if (isPaused) {
             if (keyManager.up && !lastUpState) {
                 pauseMenuSelection--;
-                if (pauseMenuSelection < 0) pauseMenuSelection = 2;
+                if (pauseMenuSelection < 0) pauseMenuSelection = 3;
             }
             if (keyManager.down && !lastDownState) {
                 pauseMenuSelection++;
-                if (pauseMenuSelection > 2) pauseMenuSelection = 0;
+                if (pauseMenuSelection > 3) pauseMenuSelection = 0;
             }
             if (keyManager.enter && !lastEnterState) {
                 executePauseMenuAction();
@@ -318,21 +346,42 @@ public class Game implements Runnable {
                 SwingUtilities.invokeLater(() -> SettingsDialog.showSettings(owner));
                 break;
 
-            case 1: /// RETURN TO MENU
-                /*
-                 * Cerem oprirea jocului și revenirea în meniul principal.
-                 * Nu închidem direct fereastra aici, pentru că suntem în logica jocului.
-                 */
+            case 1: /// SAVE GAME
+                saveCurrentGame(true);
+                break;
+
+            case 2: /// RETURN TO MENU
                 returnToMainMenu();
                 break;
 
-            case 2: /// EXIT
-            /// Închide complet aplicația.
+            case 3: /// EXIT
                 System.exit(0);
                 break;
         }
     }
 
+
+    /*! \fn private void saveCurrentGame(boolean showMessage)
+    \brief Salveaza starea curenta a jocului.
+ */
+    private void saveCurrentGame(boolean showMessage) {
+        if (player == null) {
+            return;
+        }
+
+        SaveManager.saveGame(currentLevel, player.GetX(), player.GetY());
+
+        if (showMessage) {
+            SwingUtilities.invokeLater(() ->
+                    JOptionPane.showMessageDialog(
+                            null,
+                            "Jocul a fost salvat cu succes.",
+                            "Save Game",
+                            JOptionPane.INFORMATION_MESSAGE
+                    )
+            );
+        }
+    }
 
     private void returnToMainMenu() {
         /*
@@ -417,7 +466,7 @@ public class Game implements Runnable {
             g2d.setColor(new Color(0, 0, 0, 180));
             g2d.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
-            String[] options = {"SETTINGS", "RETURN TO MENU", "EXIT"};
+            String[] options = {"SETTINGS", "SAVE GAME", "RETURN TO MENU", "EXIT"};
             Font font = new Font("Serif", Font.BOLD, 36);
             g2d.setFont(font);
             FontMetrics fm = g2d.getFontMetrics(font);
@@ -535,6 +584,12 @@ public class Game implements Runnable {
         wolf = null;
         skeleton = null;
 
+        /// Daca intram direct prin LOAD intr-un nivel diferit de 1,
+        /// player-ul trebuie creat inainte de setPlayerSpawn().
+        if (player == null) {
+            player = new Player(0, 0);
+        }
+
         if (level == 1) {
             /// Încărcăm harta primului nivel.
             map = new Map(
@@ -556,9 +611,11 @@ public class Game implements Runnable {
 
             /// Instantiem doar inamicul corespunzator Nivelului 1
             wolf = new Enemy(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
-        } else if (level == 2) {
-            /// Încărcăm harta celui de-al doilea nivel.
-            map = new Map("res/maps/level2.txt");
+        }else if (level == 2) {
+        /// Încărcăm harta celui de-al doilea nivel.
+            map = new Map("res/maps/level2_base.png",
+                      "res/maps/level2_foreground.png",
+                              "res/maps/harta_nivel2_dungeon.tmx");
 
             /// Spawn-ul player-ului în nivelul 2.
             setPlayerSpawn(9, 13);
@@ -582,41 +639,49 @@ public class Game implements Runnable {
     /*! \fn private void checkLevelTransition()
         \brief Verifica pozitia jucatorului fata de coordonatele iesirii nivelului curent.
      */
+
+    /*! \fn private void checkLevelTransition()
+    \brief Verifica pozitia jucatorului fata de zonele de tranzitie ale nivelului curent.
+ */
     private void checkLevelTransition() {
         if (transitionCooldown > 0) return;
 
         /*
          * Pentru tranzitii folosim pozitia picioarelor, nu centrul sprite-ului.
-         * Altfel trecerea se activeaza prea devreme, pentru ca sprite-ul playerului
-         * este desenat mai sus decat hitbox-ul real.
+         * Astfel trecerea se activeaza doar cand player-ul calca efectiv
+         * pe zona marcata in Tiled.
          */
         int playerFeetX = (int) player.GetFeetCenterX();
         int playerFeetY = (int) player.GetFeetBottomY();
 
         if (currentLevel == 1) {
             /*
-             * Nivelul 1 nu mai trece in dungeon prin poarta principala.
-             * Tranzitia se face doar cand picioarele player-ului ajung
-             * pe tile-ul marcat in layer-ul TransitionToDungeon.
+             * Nivelul 1 -> Nivelul 2:
+             * intrarea in dungeon se face prin zona marcata in layer-ul TransitionToDungeon.
              */
-            if (map.isTransitionAtPixel(playerFeetX, playerFeetY)) {
+            if (map.isTransitionAtPixel(playerFeetX, playerFeetY)
+                    || map.isTransitionAtPixel(playerFeetX - 8, playerFeetY)
+                    || map.isTransitionAtPixel(playerFeetX + 8, playerFeetY)) {
                 loadLevel(2);
+                saveCurrentGame(false);
             }
         }
         else if (currentLevel == 2) {
-            /// Iesire Nivel 2: ramane logica veche catre nivelul 3.
-            int iesireX_Stanga = 8;
-            int iesireX_Dreapta = 12;
-
-            int playerCenterX = (int) player.GetX() + player.GetWidth() / 2;
-
-            if (player.GetY() <= 20 &&
-                    playerCenterX >= iesireX_Stanga * Tile.TILE_WIDTH &&
-                    playerCenterX <= iesireX_Dreapta * Tile.TILE_WIDTH) {
+            /*
+             * Nivelul 2 -> Nivelul 3:
+             * iesirea spre Great Hall se face prin zona marcata in layer-ul TransitionToGreatHall.
+             */
+            if (map.isTransitionAtPixel(playerFeetX, playerFeetY)
+                    || map.isTransitionAtPixel(playerFeetX - 8, playerFeetY)
+                    || map.isTransitionAtPixel(playerFeetX + 8, playerFeetY)) {
                 loadLevel(3);
+                saveCurrentGame(false);
             }
         }
     }
 }
+
+
+
 
 

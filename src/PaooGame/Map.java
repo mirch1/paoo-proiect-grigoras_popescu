@@ -186,7 +186,9 @@ public class Map {
                     collisionData = readBooleanLayer(layer);
                 }
 
-                if (layerName.equals("TransitionToDungeon")) {
+                if (layerName.equals("TransitionToDungeon")
+                        || layerName.equals("TransitionToGreatHall")
+                        || layerName.equals("Transitions")) {
                     transitionData = readBooleanLayer(layer);
                 }
             }
@@ -374,4 +376,4 @@ public class Map {
             }
         }
     }
-}
+

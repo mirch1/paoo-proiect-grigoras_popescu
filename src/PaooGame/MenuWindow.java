@@ -108,10 +108,22 @@ public class MenuWindow extends JFrame {
         /// Poziționăm butonul LOAD GAME sub PLAY.
         loadButton.setBounds(centerX, startY + buttonHeight + spacing, buttonWidth, buttonHeight);
 
-        /// Momentan LOAD GAME este doar placeholder pentru etapa cu baza de date.
-        loadButton.addActionListener(e ->
-                JOptionPane.showMessageDialog(this, "Load Game va fi implementat in saptamana 12.")
-        );
+        loadButton.addActionListener(e -> {
+            if (!SaveManager.hasSaveGame()) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "Nu exista niciun joc salvat.",
+                        "Load Game",
+                        JOptionPane.WARNING_MESSAGE
+                );
+                return;
+            }
+
+            dispose();
+
+            Game paooGame = new Game("Aethelgard", screenWidth, screenHeight, true);
+            paooGame.StartGame();
+        });
 
         /// Adăugăm butonul LOAD GAME pe panou.
         panel.add(loadButton);
@@ -151,13 +163,7 @@ public class MenuWindow extends JFrame {
         validate();
     }
 
-    private void leaveFullScreenMode() {
-        GraphicsDevice device = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
-
-        if (device.getFullScreenWindow() == this) {
-            device.setFullScreenWindow(null);
-        }
-    }
+    
     // Funcție utilitară pentru crearea butoanelor principale
     private JButton createMenuButton(String text) {
         JButton button = new JButton(text);
@@ -302,3 +308,4 @@ public class MenuWindow extends JFrame {
         }
     }
 }
+

@@ -627,7 +627,9 @@ public class Game implements Runnable {
             skeleton = new Skeleton(liberX * Tile.TILE_WIDTH, liberY * Tile.TILE_HEIGHT, player);
         } else if (level == 3) {
             /// Încărcăm harta celui de-al treilea nivel.
-            map = new Map("res/maps/level3.txt");
+            map = new Map("res/maps/level3_base.png",
+                            "res/maps/level3_foreground.png",
+                             "res/maps/harta_nivel3_the_great_hall.tmx");
             setPlayerSpawn(9, 13);
 
             /// In Nivelul 3 jucatorul va intalni provocari noi (Inamici setati temporar pe null)

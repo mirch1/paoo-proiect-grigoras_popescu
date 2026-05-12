@@ -6,7 +6,7 @@ public class Animation {
     private final int speed; // Timpul (în milisecunde) între cadre
     private int index;       // Cadrul curent pe care îl afișăm
     private long lastTime, timer;
-    private final BufferedImage[] frames; // Șirul de imagini pentru animație
+    private final BufferedImage[] frames; // sirul de imagini pentru animație
 
     // Constructorul primește viteza și cadrele
     public Animation(int speed, BufferedImage[] frames) {

@@ -2,6 +2,7 @@ package PaooGame;
 
 import PaooGame.enemies.Enemy;
 import PaooGame.enemies.Skeleton;
+import PaooGame.enemies.Spider;
 
 import PaooGame.GameWindow.GameWindow;
 import PaooGame.Graphics.Assets;
@@ -16,37 +17,38 @@ import java.awt.image.BufferStrategy;
  */
 public class Game implements Runnable {
     private GameWindow wnd;                /*!< Fereastra in care se va desena tabla jocului.*/
-    private boolean runState;           /*!< Flag ce indica starea firului de executie.*/
-    private Thread gameThread;         /*!< Referinta catre thread-ul de update si draw.*/
-    private BufferStrategy bs;                 /*!< Mecanism pentru organizarea memoriei video (Triple Buffering).*/
+    private boolean runState;              /*!< Flag ce indica starea firului de executie.*/
+    private Thread gameThread;             /*!< Referinta catre thread-ul de update si draw.*/
+    private BufferStrategy bs;             /*!< Mecanism pentru organizarea memoriei video (Triple Buffering).*/
 
-    private Map map;                /*!< Referinta catre harta curenta.*/
+    private Map map;                       /*!< Referinta catre harta curenta.*/
     private KeyManager keyManager;         /*!< Referinta catre managerul de tastatura.*/
-    private Camera camera;             /*!< Referinta catre camera de urmarire a jucatorului.*/
+    private Camera camera;                 /*!< Referinta catre camera de urmarire a jucatorului.*/
 
     /// ENTITATILE JOCULUI
-    private Player player;             /*!< Referinta catre jucatorul principal.*/
-    private Enemy wolf;               /*!< Referinta catre inamicul Lup (Nivel 1).*/
-    private Skeleton skeleton;           /*!< Referinta catre inamicul Schelet (Nivel 2).*/
+    private Player player;                 /*!< Referinta catre jucatorul principal.*/
+    private Enemy wolf;                    /*!< Referinta catre inamicul Lup (Nivel 1).*/
+    private Skeleton skeleton;             /*!< Referinta catre inamicul Schelet (Nivel 2).*/
+    private Spider spider;                 /*!< Referinta catre inamicul Spider (Nivel 2, ranged).*/
 
     /// VARIABILE PENTRU NIVELURI SI TRANZITII
-    private int currentLevel;       /*!< Numarul nivelului curent.*/
-    private int transitionCooldown; /*!< Temporizator pentru a preveni tranzitiile instantanee repetate.*/
+    private int currentLevel;              /*!< Numarul nivelului curent.*/
+    private int transitionCooldown;        /*!< Temporizator pentru a preveni tranzitiile instantanee repetate.*/
 
     /// DIMENSIUNI LOGICE ALE ECRANULUI
-    private final int LOGICAL_WIDTH = 800;  /*!< Latimea logica a ferestrei.*/
-    private final int LOGICAL_HEIGHT = 600; /*!< Inaltimea logica a ferestrei.*/
+    private final int LOGICAL_WIDTH = 800; /*!< Latimea logica a ferestrei.*/
+    private final int LOGICAL_HEIGHT = 600;/*!< Inaltimea logica a ferestrei.*/
 
-    private Graphics g;                  /*!< Referinta catre contextul grafic.*/
+    private Graphics g;                    /*!< Referinta catre contextul grafic.*/
 
     /// VARIABILE PENTRU PAUZA SI MENIU
-    private boolean isPaused = false;       /*!< Flag care indica daca jocul este in pauza.*/
-    private int pauseMenuSelection = 0; /*!< Indexul optiunii selectate in meniul de pauza.*/
+    private boolean isPaused = false;      /*!< Flag care indica daca jocul este in pauza.*/
+    private int pauseMenuSelection = 0;    /*!< Indexul optiunii selectate in meniul de pauza.*/
     private volatile boolean returnToMenuRequested = false;
 
     /// VARIABILE PENTRU DEBUG MODE (Tasta H)
-    public static boolean showHitboxes = false;   /*!< Variabila globala pentru afisarea coliziunilor.*/
-    public static int currentFPS = 0;         /*!< Stocheaza numarul de cadre pe secunda calculate.*/
+    public static boolean showHitboxes = false; /*!< Variabila globala pentru afisarea coliziunilor.*/
+    public static int currentFPS = 0;           /*!< Stocheaza numarul de cadre pe secunda calculate.*/
 
     /// MEMORAREA STARII TASTELOR (Pentru a detecta o singura apasare)
     private boolean lastEscapeState = false;
@@ -64,6 +66,7 @@ public class Game implements Runnable {
     public Game(String title, int width, int height) {
         this(title, width, height, false);
     }
+
     public Game(String title, int width, int height, boolean loadSavedGame) {
         wnd = new GameWindow(title, width, height);
         runState = false;
@@ -79,14 +82,14 @@ public class Game implements Runnable {
         currentLevel = 1;
         transitionCooldown = 0;
 
-/// Cream managerul de taste si il atasam ferestrei (Canvas-ului)
+        /// Cream managerul de taste si il atasam ferestrei (Canvas-ului)
         keyManager = new KeyManager();
         wnd.GetCanvas().addKeyListener(keyManager);
         wnd.GetCanvas().setFocusable(true);
         wnd.GetCanvas().requestFocus();
 
-/// Initializam camera inainte de incarcarea nivelului.
-/// Astfel camera poate fi recentrata corect si la New Game, si la Load Game.
+        /// Initializam camera inainte de incarcarea nivelului.
+        /// Astfel camera poate fi recentrata corect si la New Game, si la Load Game.
         camera = new Camera(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
         if (loadSavedGame) {
@@ -307,9 +310,14 @@ public class Game implements Runnable {
             wolf.Update(map);
         }
 
-        /// Inamic Nivel 2
+        /// Inamic Nivel 2 - Schelet
         if (skeleton != null && map != null) {
             skeleton.Update(map);
+        }
+
+        /// Inamic Nivel 2 - Spider (ranged)
+        if (spider != null && map != null) {
+            spider.Update(map);
         }
 
         /// Centram camera pe coordonatele jucatorului
@@ -329,7 +337,6 @@ public class Game implements Runnable {
     /*! \fn private void executePauseMenuAction()
         \brief Executa logica butonului apasat in meniul de pauza.
      */
-
     private void executePauseMenuAction() {
         /*
          * Execută acțiunea corespunzătoare opțiunii selectate
@@ -360,10 +367,9 @@ public class Game implements Runnable {
         }
     }
 
-
     /*! \fn private void saveCurrentGame(boolean showMessage)
-    \brief Salveaza starea curenta a jocului.
- */
+        \brief Salveaza starea curenta a jocului.
+     */
     private void saveCurrentGame(boolean showMessage) {
         if (player == null) {
             return;
@@ -396,7 +402,6 @@ public class Game implements Runnable {
          */
         runState = false;
     }
-
 
     /*! \fn private void Draw()
         \brief Metoda responsabila de randarea tuturor elementelor grafice pe ecran.
@@ -451,6 +456,9 @@ public class Game implements Runnable {
         if (skeleton != null && camera != null) {
             skeleton.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
+        if (spider != null && camera != null) {
+            spider.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
 
         /// 3. Desenam Jucatorul (deasupra entitatilor)
         if (player != null && camera != null) {
@@ -461,6 +469,7 @@ public class Game implements Runnable {
         if (map != null && camera != null) {
             map.DrawForeground(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
+
         /// 5. Desenam Meniul de Pauza (Overlay Semi-Transparent)
         if (isPaused) {
             g2d.setColor(new Color(0, 0, 0, 180));
@@ -488,9 +497,11 @@ public class Game implements Runnable {
                 }
             }
         }
+
         if (GameSettings.cinematicMode) {
             drawCinematicVignette(g2d);
         }
+
         /// 6. OVERLAY DEVELOPER (FPS si Mod Debug) - Desenat ultimul, sa fie peste orice
         if (showHitboxes) {
             g2d.setColor(Color.YELLOW);
@@ -532,10 +543,9 @@ public class Game implements Runnable {
         g2d.fillRect(LOGICAL_WIDTH - 90, 0, 90, LOGICAL_HEIGHT);
     }
 
-    /*! \fn private void loadLevel(int level)
-       \brief Instanteaza si reseteaza harta si entitatile corespunzatoare noului nivel.
-    */
-
+    /*! \fn private void setPlayerSpawn(int tileCol, int tileRow)
+        \brief Pozitioneaza player-ul pe baza coordonatelor de tile si reseteaza inputul.
+     */
     private void setPlayerSpawn(int tileCol, int tileRow) {
         /*
          * Calculează poziția de spawn a player-ului pornind de la coordonate de tile.
@@ -570,19 +580,22 @@ public class Game implements Runnable {
          * Motiv:
          * Dacă player-ul intră în nivelul următor ținând apăsată o tastă,
          * jocul poate aplica imediat încă o deplasare după spawn.
-         * De aceea părea că personajul apare mai încolo decât ar trebui.
          */
         if (keyManager != null) {
             keyManager.Clear();
         }
     }
 
+    /*! \fn private void loadLevel(int level)
+       \brief Instanteaza si reseteaza harta si entitatile corespunzatoare noului nivel.
+    */
     private void loadLevel(int level) {
         currentLevel = level;
 
         /// Resetam toti inamicii curenti la tranzitie pentru a curata memoria
         wolf = null;
         skeleton = null;
+        spider = null;
 
         /// Daca intram direct prin LOAD intr-un nivel diferit de 1,
         /// player-ul trebuie creat inainte de setPlayerSpawn().
@@ -611,25 +624,30 @@ public class Game implements Runnable {
 
             /// Instantiem doar inamicul corespunzator Nivelului 1
             wolf = new Enemy(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
-        }else if (level == 2) {
-        /// Încărcăm harta celui de-al doilea nivel.
+        } else if (level == 2) {
+            /// Încărcăm harta celui de-al doilea nivel.
             map = new Map("res/maps/level2_base.png",
-                      "res/maps/level2_foreground.png",
-                              "res/maps/harta_nivel2_dungeon.tmx");
+                    "res/maps/level2_foreground.png",
+                    "res/maps/harta_nivel2_dungeon.tmx");
 
             /// Spawn-ul player-ului în nivelul 2.
             setPlayerSpawn(9, 13);
 
-            /// spawn pointul scheletului (Coloana 5, Randul 6)
-            int liberX = 5;
-            int liberY = 6;
-
+            /// spawn point-ul scheletului pe un tile liber (ajusteaza daca modifici harta)
+            int liberX = 9;
+            int liberY = 8;
             skeleton = new Skeleton(liberX * Tile.TILE_WIDTH, liberY * Tile.TILE_HEIGHT, player);
+
+            /// Spider: initial il punem pe acelasi tile ca player-ul (sigur nu este perete).
+            /// Dupa ce verifici ca e liber, poti muta spiderX/spiderY 1–2 tile-uri unde doresti.
+            int spiderX = 9;
+            int spiderY = 13;
+            spider = new Spider(spiderX * Tile.TILE_WIDTH, spiderY * Tile.TILE_HEIGHT, player);
         } else if (level == 3) {
             /// Încărcăm harta celui de-al treilea nivel.
             map = new Map("res/maps/level3_base.png",
-                            "res/maps/level3_foreground.png",
-                             "res/maps/harta_nivel3_the_great_hall.tmx");
+                    "res/maps/level3_foreground.png",
+                    "res/maps/harta_nivel3_the_great_hall.tmx");
             setPlayerSpawn(9, 13);
 
             /// In Nivelul 3 jucatorul va intalni provocari noi (Inamici setati temporar pe null)
@@ -639,12 +657,8 @@ public class Game implements Runnable {
     }
 
     /*! \fn private void checkLevelTransition()
-        \brief Verifica pozitia jucatorului fata de coordonatele iesirii nivelului curent.
+        \brief Verifica pozitia jucatorului fata de zonele de tranzitie ale nivelului curent.
      */
-
-    /*! \fn private void checkLevelTransition()
-    \brief Verifica pozitia jucatorului fata de zonele de tranzitie ale nivelului curent.
- */
     private void checkLevelTransition() {
         if (transitionCooldown > 0) return;
 
@@ -682,8 +696,3 @@ public class Game implements Runnable {
         }
     }
 }
-
-
-
-
-

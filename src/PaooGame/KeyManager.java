@@ -19,6 +19,8 @@ public class KeyManager implements KeyListener {
     public boolean enter;    /*!< Flag pentru tasta ENTER (Confirmarea selectiei in meniu).*/
     public boolean debug;    /*!< Flag pentru tasta H (Activare/Deactivare Hitbox-uri).*/
 
+    public boolean attack;   /*!< Flag pentru tasta SPACE (Atac Knight).*/
+
     /*! \fn public void Update()
         \brief Actualizeaza flagurile de control pe baza starii vectorului de taste.
      */
@@ -31,6 +33,8 @@ public class KeyManager implements KeyListener {
         escape = isPressed(KeyEvent.VK_ESCAPE);
         enter = isPressed(KeyEvent.VK_ENTER);
         debug = isPressed(KeyEvent.VK_H);
+
+        attack = isPressed(KeyEvent.VK_SPACE);  /*!< Tasta folosita pentru atacul cavalerului. */
     }
 
     /*! \fn private boolean isPressed(int keyCode)
@@ -40,8 +44,9 @@ public class KeyManager implements KeyListener {
         return keyCode >= 0 && keyCode < keys.length && keys[keyCode];
     }
 
-
-
+    /*! \fn public void Clear()
+        \brief Reseteaza toate tastele memorate ca fiind apasate (util dupa schimbare nivel / revenire in meniu).
+     */
     public void Clear() {
         /*
          * Resetează toate tastele memorate ca fiind apăsate.
@@ -67,8 +72,8 @@ public class KeyManager implements KeyListener {
         escape = false;
         enter = false;
         debug = false;
+        attack = false;
     }
-
 
     @Override
     public void keyPressed(KeyEvent e) {

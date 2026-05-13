@@ -1,206 +1,264 @@
 package PaooGame.enemies;
 
 import PaooGame.*;
+import PaooGame.Tiles.Tile;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.List;
 import javax.imageio.ImageIO;
 
 /*! \class Enemy
     \brief Implementeaza inamicul de tip Lup (Nivel 1), mostenind clasa abstracta Entity.
-    \details Utilizeaza AI simplu pentru urmarirea jucatorului si gestionarea starilor de animatie.
+    \details Utilizeaza pathfinding pe tile-uri pentru a-l urmari pe jucator in jurul obstacolelor.
  */
 public class Enemy extends Entity {
 
-    /// Animatia pentru starea de repaus a lupului.
-    private Animation animIdle;
-    /// Animatia pentru starea de alergare/urmarire.
-    private Animation animRun;
+    private Animation animIdle;    /*!< Animatia pentru starea de repaus a lupului.    */
+    private Animation animRun;     /*!< Animatia pentru starea de alergare/urmarire.   */
+    private Animation animAttack;  /*!< Animatia pentru atac (saritura / muscatura).   */
 
-    /// Flag care indica daca lupul se afla in miscare.
     private boolean isMoving = false;
-    /// Flag care retine directia in care este orientat lupul (true = dreapta, false = stanga).
+    private boolean isAttacking = false;
+    private int attackTimer = 0;
+
     private boolean facingRight = true;
 
-    /// Referinta catre entitatea Jucatorului (tinta AI-ului).
     private Player targetPlayer;
-    /// Distanta maxima in pixeli de la care lupul detecteaza jucatorul.
     private final int aggroRadius = 250;
 
-    /*! \fn public Enemy(float x, float y, Player targetPlayer)
-        \brief Constructorul de initializare pentru inamicul Lup.
-        \param x Pozitia initiala de spawn pe axa X.
-        \param y Pozitia initiala de spawn pe axa Y.
-        \param targetPlayer Referinta catre jucatorul pe care il va urmari.
-     */
+    /// --- Pathfinding ---
+    private List<Point> path;      /*!< Path-ul curent, in coordonate de tile (col,row). */
+    private int pathIndex = 0;     /*!< Indexul in path al urmatorului tile tinta.      */
+    private int pathCooldown = 0;  /*!< Cate frame-uri mai asteptam pana recalculam path-ul. */
+    private int lastTargetRow = -1;
+    private int lastTargetCol = -1;
+
     public Enemy(float x, float y, Player targetPlayer) {
-        /// Apelam constructorul parintelui Entity stabilind un spatiu fizic general de 32x32 pixeli.
         super(x, y, 32, 32);
 
-        /// Viteza de miscare a lupului (recomandat mai mica decat a player-ului pentru echilibru).
         this.speed = 2.2f;
         this.targetPlayer = targetPlayer;
 
-        /// --- AJUSTARE HITBOX COLIZIUNI ---
-        /// Definim zona in care lupul se loveste de pereti doar in jumatatea de jos (la picioare)
-        /// Astfel obtinem efectul 2.5D de profunzime, permitand vizual corpului sa se suprapuna peste pereti.
         this.feetOffsetX = 4;
         this.feetOffsetY = 20;
         this.feetWidth = 24;
         this.feetHeight = 12;
 
-        /// =========================================================
-        /// INCARCAREA RESURSELOR GRAFICE (SPRITE SHEET LUP)
-        /// =========================================================
         try {
-            /// Dimensiunile exacte calculate dintr-o imagine de 384x256 (grila 8x8).
             int frameWidth = 32;
             int frameHeight = 32;
 
-            /// Incarcarea intregului fisier in memorie
             BufferedImage sheet = ImageIO.read(new File("res/textures/wolf_gray_full.png"));
-
-            /// Selectam Randul 6 (al 7-lea de sus in jos) unde lupul este orientat clar spre dreapta.
             int rightFacingRow = 6;
 
-            /// 1. ANIMATIA IDLE (Repaus)
-            /// Pe imaginea de 384x256, lupul asezat este la indexul 8, iar urletul la 10.
             int sitCol = 7;
             int howlCol = 10;
 
             BufferedImage[] framesIdle = new BufferedImage[4];
-
-            /// Secventa: Sezut -> Sezut (pauza mai lunga) -> Urlet -> Sezut
             framesIdle[0] = sheet.getSubimage(sitCol * frameWidth, rightFacingRow * frameHeight, frameWidth, frameHeight);
             framesIdle[1] = sheet.getSubimage(sitCol * frameWidth, rightFacingRow * frameHeight, frameWidth, frameHeight);
             framesIdle[2] = sheet.getSubimage(howlCol * frameWidth, rightFacingRow * frameHeight, frameWidth, frameHeight);
             framesIdle[3] = sheet.getSubimage(sitCol * frameWidth, rightFacingRow * frameHeight, frameWidth, frameHeight);
-
-            /// Setam o viteza mai mica (700ms pe cadru) pentru ca este o actiune de repaus
             animIdle = new Animation(700, framesIdle);
 
-            /// 2. ANIMATIA RUN (Alergare)
-            /// Secventa de alergare are 5 lupi pe acest rand.
             int numberOfRunFrames = 5;
             BufferedImage[] framesRun = new BufferedImage[numberOfRunFrames];
             for(int i = 0; i < framesRun.length; i++) {
-                /// Decupam consecutiv de pe randul 6
                 framesRun[i] = sheet.getSubimage(i * frameWidth, rightFacingRow * frameHeight, frameWidth, frameHeight);
             }
-
-            /// Initializam animatia de alergare cu o viteza de 90ms pe cadru
             animRun = new Animation(90, framesRun);
 
+            int attackRow = 7;
+            int attackFramesCount = 5;
+            BufferedImage[] framesAttack = new BufferedImage[attackFramesCount];
+            for (int i = 0; i < attackFramesCount; i++) {
+                framesAttack[i] = sheet.getSubimage(
+                        i * frameWidth,
+                        attackRow * frameHeight,
+                        frameWidth,
+                        frameHeight
+                );
+            }
+            animAttack = new Animation(80, framesAttack);
+
         } catch (Exception e) {
-            System.out.println("Eroare critica: Nu s-a putut incarca fisierul 'wolf_gray_full.png'!");
+            System.out.println("Eroare critica: Nu s-a putut incarca fisierul pentru Lup!");
             e.printStackTrace();
         }
     }
 
     /*! \fn public void Update(Map map)
-        \brief Actualizeaza logica de miscare, coliziunile si selecteaza animatia potrivita.
-        \param map Referinta catre harta curenta pentru validarea deplasarii.
+        \brief Actualizeaza logica de miscare, path-ul si animatia.
      */
     public void Update(Map map) {
-        /// 1. CALCULUL DISTANTEI PANA LA TINTA
-        /// Se foloseste distanta euclidiana.
-        float distance = (float) Math.sqrt(Math.pow(targetPlayer.GetX() - this.x, 2) + Math.pow(targetPlayer.GetY() - this.y, 2));
+        float oldX = x;
+        float oldY = y;
+
+        /// 1. Distanta pana la tinta.
+        float dxPlayer = targetPlayer.GetFeetCenterX() - this.GetFeetCenterX();
+        float dyPlayer = targetPlayer.GetFeetBottomY() - this.GetFeetBottomY();
+        float distance = (float) Math.sqrt(dxPlayer * dxPlayer + dyPlayer * dyPlayer);
+
+        /// 2. Atac de proximitate (fara pathfinding).
+        if (distance < 40 && attackTimer == 0) {
+            isAttacking = true;
+            attackTimer = 30;
+        }
 
         float xMove = 0;
         float yMove = 0;
 
-        /// 2. LOGICA DE URMARIRE (AI)
-        /// Lupul se apropie daca jucatorul este in zona de aggro.
-        if (distance < aggroRadius && distance > 5) {
+        if (!isAttacking && distance < aggroRadius) {
+            /// 3. Calculam tile-ul de start (sub picioarele lupului).
+            int startCol = (int)(GetFeetCenterX() / Tile.TILE_WIDTH);
+            int startRow = (int)(GetFeetBottomY() / Tile.TILE_HEIGHT);
 
-            /// Zona de toleranta (Deadzone) egala cu viteza pentru a preveni "Jittering"-ul
-            /// (miscarea spasmodica in stanga si dreapta cand coordonatele sunt aproape egale).
-            if (targetPlayer.GetX() < this.x - speed) {
-                xMove -= speed;
-                facingRight = false;
-            } else if (targetPlayer.GetX() > this.x + speed) {
-                xMove += speed;
-                facingRight = true;
+            /// 4. Calculam tile-ul tinta (sub picioarele jucatorului).
+            int targetCol = (int)(targetPlayer.GetFeetCenterX() / Tile.TILE_WIDTH);
+            int targetRow = (int)(targetPlayer.GetFeetBottomY() / Tile.TILE_HEIGHT);
+
+            /// 5. Recalculam path-ul doar cand este nevoie:
+            boolean needNewPath = false;
+
+            if (path == null || path.isEmpty()) {
+                needNewPath = true;
+            }
+            if (targetRow != lastTargetRow || targetCol != lastTargetCol) {
+                needNewPath = true;
+            }
+            if (pathCooldown <= 0) {
+                needNewPath = true;
             }
 
-            if (targetPlayer.GetY() < this.y - speed) {
-                yMove -= speed;
-            } else if (targetPlayer.GetY() > this.y + speed) {
-                yMove += speed;
+            if (needNewPath) {
+                path = PathFinder.findPath(map, startRow, startCol, targetRow, targetCol);
+                pathIndex = 0;
+                lastTargetRow = targetRow;
+                lastTargetCol = targetCol;
+                pathCooldown = 15; /// recalc la ~0.25 secunde la 60 FPS
+            } else {
+                pathCooldown--;
+            }
+
+            /// 6. Daca avem un path valid, mergem spre urmatorul tile.
+            if (path != null && path.size() >= 2) {
+                /// path[0] este tile-ul in care suntem acum; path[1] este urmatorul nod.
+                Point nextTile = path.get(1);
+                float targetTileCenterX = nextTile.x * Tile.TILE_WIDTH + Tile.TILE_WIDTH / 2.0f;
+                float targetTileCenterY = nextTile.y * Tile.TILE_HEIGHT + Tile.TILE_HEIGHT / 2.0f;
+
+                float dx = targetTileCenterX - GetFeetCenterX();
+                float dy = targetTileCenterY - GetFeetBottomY();
+
+                if (Math.abs(dx) > speed) {
+                    xMove = (dx > 0) ? speed : -speed;
+                    facingRight = (dx > 0);
+                } else {
+                    xMove = dx;
+                }
+
+                if (Math.abs(dy) > speed) {
+                    yMove = (dy > 0) ? speed : -speed;
+                } else {
+                    yMove = dy;
+                }
+
+            } else {
+                /// Daca path-ul nu poate fi calculat, revenim la urmarirea simpla.
+                if (Math.abs(dxPlayer) > speed) {
+                    xMove = (dxPlayer > 0) ? speed : -speed;
+                    facingRight = (dxPlayer > 0);
+                }
+                if (Math.abs(dyPlayer) > speed) {
+                    yMove = (dyPlayer > 0) ? speed : -speed;
+                }
             }
         }
 
-        /// 3. ACTUALIZAREA STARII SI A ANIMATIEI CURENTE
         isMoving = (xMove != 0 || yMove != 0);
 
-        if (isMoving) {
+        /// 7. Tick animatii.
+        if (isAttacking) {
+            if (animAttack != null) animAttack.tick();
+        } else if (isMoving) {
             if (animRun != null) animRun.tick();
         } else {
             if (animIdle != null) animIdle.tick();
         }
 
-        /// 4. EXECUTIA MISCARII (cu validare coliziuni preluata din clasa parinte)
-        if (xMove != 0) {
-            float newX = x + xMove;
-            if (CanMoveTo(newX, y, map)) x = newX;
+        /// 8. Miscare efectiva cu coliziuni.
+        if (!isAttacking) {
+            if (xMove != 0) {
+                float newX = x + xMove;
+                if (CanMoveTo(newX, y, map)) x = newX;
+            }
+            if (yMove != 0) {
+                float newY = y + yMove;
+                if (CanMoveTo(x, newY, map)) y = newY;
+            }
         }
-        if (yMove != 0) {
-            float newY = y + yMove;
-            if (CanMoveTo(x, newY, map)) y = newY;
+
+        /// 9. Daca ne-am impotmolit, resetam path-ul pentru a-l recalcula.
+        if (!isAttacking && distance < aggroRadius) {
+            boolean stuck = (Math.abs(x - oldX) < 0.1f && Math.abs(y - oldY) < 0.1f);
+            if (stuck) {
+                path = null;
+                pathCooldown = 0;
+            }
+        }
+
+        /// 10. Timer pentru atac.
+        if (attackTimer > 0) {
+            attackTimer--;
+            if (attackTimer == 0) {
+                isAttacking = false;
+            }
         }
     }
 
-    /*! \fn public void Draw(Graphics g, int cameraX, int cameraY, int offsetX, int offsetY)
-        \brief Metoda de desenare a inamicului si umbrei sale. Include o marire virtuala a personajului.
-     */
     public void Draw(Graphics g, int cameraX, int cameraY, int offsetX, int offsetY) {
-        /// Stabilim coordonatele reale pe ecran aplicand si decalarile de la Camera/Harta
         int screenX = offsetX + (int) x - cameraX;
         int screenY = offsetY + (int) y - cameraY;
 
         Graphics2D g2 = (Graphics2D) g;
 
-        /// Desenam umbra la baza hitbox-ului pentru profunzime 2.5D
         g2.setColor(new Color(0, 0, 0, 60));
         g2.fillOval(screenX + 8, screenY + 24, 18, 8);
 
-        if (animIdle != null && animRun != null) {
-
-            /// Il facem de 32x32
+        if (animIdle != null && animRun != null && animAttack != null) {
             int renderWidth = 32;
             int renderHeight = 32;
 
-            /// Calculam offset-ul de desenare pentru a centra desenul
             int drawX = screenX - 1;
-            int drawY = screenY - 0;
+            int drawY = screenY;
 
-            BufferedImage currentFrame = isMoving ? animRun.getCurrentFrame() : animIdle.getCurrentFrame();
+            BufferedImage currentFrame;
+            if (isAttacking) {
+                currentFrame = animAttack.getCurrentFrame();
+            } else if (isMoving) {
+                currentFrame = animRun.getCurrentFrame();
+            } else {
+                currentFrame = animIdle.getCurrentFrame();
+            }
 
-            /// Randare conditionata pentru directie
             if (facingRight) {
                 g2.drawImage(currentFrame, drawX, drawY, renderWidth, renderHeight, null);
             } else {
-                /// Tehnica "Flip" pentru a reflecta imaginea pe orizontala
                 g2.drawImage(currentFrame,
                         drawX + renderWidth, drawY, drawX, drawY + renderHeight,
                         0, 0, currentFrame.getWidth(), currentFrame.getHeight(), null);
             }
         } else {
-            /// Cutie de avertizare rosie in caz de eroare I/O la imagini
             g2.setColor(Color.RED);
             g2.fillRect(screenX, screenY, width, height);
         }
 
-        /// =========================================
-        /// DEBUG: AFISARE HITBOX PENTRU COLIZIUNI
-        /// =========================================
         if (Game.showHitboxes) {
-            /// Cutia verde: Bounding Box-ul general (Spatiul virtual al personajului)
             g2.setColor(Color.GREEN);
             g2.drawRect(screenX, screenY, width, height);
 
-            /// Cutia rosie: Hitbox-ul real (Picioarele care se lovesc de harta)
             g2.setColor(Color.RED);
             g2.drawRect(screenX + feetOffsetX, screenY + feetOffsetY, feetWidth, feetHeight);
         }

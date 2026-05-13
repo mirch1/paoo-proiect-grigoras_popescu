@@ -1,11 +1,6 @@
 package PaooGame.enemies;
 
-import PaooGame.Animation;
-import PaooGame.Entity;
-import PaooGame.Game;
-import PaooGame.Map;
-import PaooGame.PathFinder;
-import PaooGame.Player;
+import PaooGame.*;
 import PaooGame.Tiles.Tile;
 
 import java.awt.*;
@@ -15,86 +10,72 @@ import java.util.List;
 import javax.imageio.ImageIO;
 
 /*! \class Skeleton
-    \brief Implementeaza un inamic de tip Schelet (Nivel 2), mostenind clasa abstracta Entity.
-    \details Utilizeaza pathfinding pe tile-uri pentru a urmari jucatorul in jurul obstacolelor.
+    \brief Implementeaza inamicul de tip Schelet (Nivel 2), mostenind clasa abstracta Entity.
+    \details Urmareste jucatorul prin pathfinding si ataca la contact fizic confirmat prin hitbox.
+             Animatia de atac se declanseaza cand hitbox-urile se suprapun.
+             Damage-ul real este aplicat in Game.checkCombat().
+             Flash-ul rosu la damage a fost eliminat.
+             Bara de viata randata separat prin drawHealthBarOnly() dupa DrawForeground().
  */
 public class Skeleton extends Entity {
 
-    private Animation animIdle;       /*!< Animatia de repaus.              */
-    private Animation animRun;        /*!< Animatia de mers/alergare.       */
-    private Animation animAttack;     /*!< Animatia de atac.                */
+    private Animation animIdle;
+    private Animation animRun;
+    private Animation animAttack;
 
-    private boolean isMoving = false; /*!< Daca scheletul se afla in miscare. */
-    private boolean isAttacking = false; /*!< Daca scheletul ataca.           */
-    private boolean facingRight = true;  /*!< Directia de randare.            */
+    private boolean isMoving    = false;
+    private boolean isAttacking = false;
+    private boolean facingRight = true;
+    private int     attackAnimTimer = 0;
 
-    private int attackTimer = 0;      /*!< Durata atacului, in frame-uri.   */
+    private Player targetPlayer;
+    private final int aggroRadius = 250;
 
-    private Player targetPlayer;      /*!< Referinta la jucatorul urmarit.  */
-    private final int aggroRadius = 250; /*!< Raza maxima de detectare.      */
+    private List<Point> path;
+    private int pathCooldown  = 0;
+    private int lastTargetRow = -1;
+    private int lastTargetCol = -1;
 
-    /// --- Pathfinding ---
-    private List<Point> path;         /*!< Path-ul curent in coordonate de tile (col,row). */
-    private int pathCooldown = 0;     /*!< Cate frame-uri mai asteptam pana la recalculare. */
-    private int lastTargetRow = -1;   /*!< Ultimul rand al jucatorului folosit la path. */
-    private int lastTargetCol = -1;   /*!< Ultima coloana a jucatorului folosita la path. */
+    private static final int SKELETON_MAX_HP = 80;
+    public  static final int ATTACK_DAMAGE   = 12;
 
     /*! \fn public Skeleton(float x, float y, Player targetPlayer)
-        \brief Constructorul de initializare pentru inamicul Schelet.
+        \brief Constructor — initializeaza HP, viteza si animatiile scheletului.
      */
     public Skeleton(float x, float y, Player targetPlayer) {
         super(x, y, 32, 32);
 
-        this.speed = 1.5f;
+        this.speed        = 1.5f;
         this.targetPlayer = targetPlayer;
+        this.maxHp        = SKELETON_MAX_HP;
+        this.currentHp    = SKELETON_MAX_HP;
 
-        /// --- AJUSTARE HITBOX COLIZIUNI ---
         this.feetOffsetX = 8;
         this.feetOffsetY = 24;
-        this.feetWidth = 16;
-        this.feetHeight = 8;
+        this.feetWidth   = 16;
+        this.feetHeight  = 8;
 
         try {
-            /// 1. INCARCARE ANIMATIE MERS
+            /// 1. ANIMATIA MERS
             BufferedImage walkSheet = ImageIO.read(new File("res/textures/Skeleton_walk-Sheet.png"));
-            int numFramesWalk = 5;
-            int walkFrameWidth = walkSheet.getWidth() / numFramesWalk;
-            int walkFrameHeight = walkSheet.getHeight();
+            int nw = 5, wfw = walkSheet.getWidth() / nw, wfh = walkSheet.getHeight();
+            BufferedImage[] fw = new BufferedImage[nw];
+            for (int i = 0; i < nw; i++) fw[i] = walkSheet.getSubimage(i * wfw, 0, wfw, wfh);
+            animRun = new Animation(120, fw);
 
-            BufferedImage[] framesWalk = new BufferedImage[numFramesWalk];
-            for(int i = 0; i < framesWalk.length; i++) {
-                framesWalk[i] = walkSheet.getSubimage(i * walkFrameWidth, 0, walkFrameWidth, walkFrameHeight);
-            }
-            animRun = new Animation(120, framesWalk);
-
-            /// 2. INCARCARE ANIMATIE REPAUS
+            /// 2. ANIMATIA REPAUS
             BufferedImage idleSheet = ImageIO.read(new File("res/textures/Skeleton_idle-Sheet.png"));
-            int numFramesIdle = 5;
-            int idleFrameWidth = idleSheet.getWidth() / numFramesIdle;
-            int idleFrameHeight = idleSheet.getHeight();
+            int ni = 5, ifw = idleSheet.getWidth() / ni, ifh = idleSheet.getHeight();
+            BufferedImage[] fi = new BufferedImage[ni];
+            for (int i = 0; i < ni; i++) fi[i] = idleSheet.getSubimage(i * ifw, 0, ifw, ifh);
+            animIdle = new Animation(200, fi);
 
-            BufferedImage[] framesIdle = new BufferedImage[numFramesIdle];
-            for(int i = 0; i < framesIdle.length; i++) {
-                framesIdle[i] = idleSheet.getSubimage(i * idleFrameWidth, 0, idleFrameWidth, idleFrameHeight);
-            }
-            animIdle = new Animation(200, framesIdle);
-
-            /// 3. INCARCARE ANIMATIE ATTACK
+            /// 3. ANIMATIA ATAC
             BufferedImage attackSheet = ImageIO.read(new File("res/textures/Skeleton_Attack-Sheet.png"));
-            int numFramesAttack = 5;
-            int attackFrameWidth = attackSheet.getWidth() / numFramesAttack;
-            int attackFrameHeight = attackSheet.getHeight();
-
-            BufferedImage[] framesAttack = new BufferedImage[numFramesAttack];
-            for (int i = 0; i < numFramesAttack; i++) {
-                framesAttack[i] = attackSheet.getSubimage(
-                        i * attackFrameWidth,
-                        0,
-                        attackFrameWidth,
-                        attackFrameHeight
-                );
-            }
-            animAttack = new Animation(90, framesAttack);
+            int na = 5, afw = attackSheet.getWidth() / na, afh = attackSheet.getHeight();
+            BufferedImage[] fa = new BufferedImage[na];
+            for (int i = 0; i < na; i++) fa[i] = attackSheet.getSubimage(i * afw, 0, afw, afh);
+            animAttack = new Animation(90, fa);
 
         } catch (Exception e) {
             System.out.println("Eroare critica: Nu s-au putut incarca fisierele pentru Skeleton!");
@@ -103,190 +84,114 @@ public class Skeleton extends Entity {
     }
 
     /*! \fn public void Update(Map map)
-        \brief Actualizeaza logica de urmarire, atac, pathfinding si animatii.
-        \param map Referinta catre harta curenta.
+        \brief Actualizeaza pathfinding, miscare, animatii si timer-ele de HP.
+        \details Animatia de atac porneste la contact fizic (hitbox overlap).
+                 Damage-ul real este aplicat in Game.checkCombat().
      */
     public void Update(Map map) {
-        float oldX = x;
-        float oldY = y;
+        if (isDead) return;
+        tickTimers();
 
-        /// 1. Distanta reala fata de jucator, calculata din zona picioarelor.
+        float oldX = x, oldY = y;
+
         float dxPlayer = targetPlayer.GetFeetCenterX() - this.GetFeetCenterX();
-        float dyPlayer = targetPlayer.GetFeetBottomY() - this.GetFeetBottomY();
+        float dyPlayer = targetPlayer.GetFeetBottomY()  - this.GetFeetBottomY();
         float distance = (float) Math.sqrt(dxPlayer * dxPlayer + dyPlayer * dyPlayer);
 
-        float xMove = 0;
-        float yMove = 0;
-
-        /// 2. Daca jucatorul este foarte aproape, scheletul intra in atac.
-        if (distance < 36 && attackTimer == 0) {
-            isAttacking = true;
-            attackTimer = 30;
+        /// Atac vizual la contact fizic — damage aplicat in checkCombat().
+        boolean touching = getFeetRect().intersects(targetPlayer.getFeetRect());
+        if (touching && attackAnimTimer == 0) {
+            isAttacking     = true;
+            attackAnimTimer = 25;
+        }
+        if (attackAnimTimer > 0) {
+            attackAnimTimer--;
+            if (attackAnimTimer == 0) isAttacking = false;
         }
 
-        /// 3. Daca jucatorul este in raza si nu atacam, folosim pathfinding.
-        if (!isAttacking && distance < aggroRadius) {
+        float xMove = 0, yMove = 0;
 
-            /// Tile-ul de start este calculat din hitbox-ul real al scheletului.
-            int startCol = (int)(GetFeetCenterX() / Tile.TILE_WIDTH);
-            int startRow = (int)(GetFeetBottomY() / Tile.TILE_HEIGHT);
+        if (!touching && distance < aggroRadius) {
+            int sc = (int)(GetFeetCenterX() / Tile.TILE_WIDTH);
+            int sr = (int)(GetFeetBottomY()  / Tile.TILE_HEIGHT);
+            int tc = (int)(targetPlayer.GetFeetCenterX() / Tile.TILE_WIDTH);
+            int tr = (int)(targetPlayer.GetFeetBottomY()  / Tile.TILE_HEIGHT);
 
-            /// Tile-ul tinta este calculat din hitbox-ul real al jucatorului.
-            int targetCol = (int)(targetPlayer.GetFeetCenterX() / Tile.TILE_WIDTH);
-            int targetRow = (int)(targetPlayer.GetFeetBottomY() / Tile.TILE_HEIGHT);
+            boolean needNew = (path == null || path.isEmpty())
+                           || (tr != lastTargetRow || tc != lastTargetCol)
+                           || (pathCooldown <= 0);
+            if (needNew) {
+                path = PathFinder.findPath(map, sr, sc, tr, tc);
+                lastTargetRow = tr; lastTargetCol = tc; pathCooldown = 15;
+            } else pathCooldown--;
 
-            boolean needNewPath = false;
-
-            /// Recalculam path-ul daca:
-            /// - nu avem unul valid,
-            /// - jucatorul s-a mutat pe alt tile,
-            /// - sau a expirat cooldown-ul.
-            if (path == null || path.isEmpty()) {
-                needNewPath = true;
-            }
-            if (targetRow != lastTargetRow || targetCol != lastTargetCol) {
-                needNewPath = true;
-            }
-            if (pathCooldown <= 0) {
-                needNewPath = true;
-            }
-
-            if (needNewPath) {
-                path = PathFinder.findPath(map, startRow, startCol, targetRow, targetCol);
-                lastTargetRow = targetRow;
-                lastTargetCol = targetCol;
-                pathCooldown = 15;
-            } else {
-                pathCooldown--;
-            }
-
-            /// 4. Daca exista un traseu valid, mergem spre urmatorul tile din path.
             if (path != null && path.size() >= 2) {
-                /// path[0] este tile-ul curent, path[1] este urmatorul nod.
-                Point nextTile = path.get(1);
-
-                float targetTileCenterX = nextTile.x * Tile.TILE_WIDTH + Tile.TILE_WIDTH / 2.0f;
-                float targetTileCenterY = nextTile.y * Tile.TILE_HEIGHT + Tile.TILE_HEIGHT / 2.0f;
-
-                float dx = targetTileCenterX - GetFeetCenterX();
-                float dy = targetTileCenterY - GetFeetBottomY();
-
-                if (Math.abs(dx) > speed) {
-                    xMove = (dx > 0) ? speed : -speed;
-                    facingRight = (dx > 0);
-                } else {
-                    xMove = dx;
-                }
-
-                if (Math.abs(dy) > speed) {
-                    yMove = (dy > 0) ? speed : -speed;
-                } else {
-                    yMove = dy;
-                }
+                Point next = path.get(1);
+                float tcx = next.x * Tile.TILE_WIDTH  + Tile.TILE_WIDTH  / 2.0f;
+                float tcy = next.y * Tile.TILE_HEIGHT + Tile.TILE_HEIGHT / 2.0f;
+                float dx  = tcx - GetFeetCenterX();
+                float dy  = tcy - GetFeetBottomY();
+                if (Math.abs(dx) > speed) { xMove = (dx > 0) ? speed : -speed; facingRight = (dx > 0); } else xMove = dx;
+                if (Math.abs(dy) > speed) { yMove = (dy > 0) ? speed : -speed; } else yMove = dy;
             } else {
-                /// Fallback: daca nu exista path, urmarim direct jucatorul.
-                if (Math.abs(dxPlayer) > speed) {
-                    xMove = (dxPlayer > 0) ? speed : -speed;
-                    facingRight = (dxPlayer > 0);
-                }
-                if (Math.abs(dyPlayer) > speed) {
-                    yMove = (dyPlayer > 0) ? speed : -speed;
-                }
+                if (Math.abs(dxPlayer) > speed) { xMove = (dxPlayer > 0) ? speed : -speed; facingRight = (dxPlayer > 0); }
+                if (Math.abs(dyPlayer) > speed) { yMove = (dyPlayer > 0) ? speed : -speed; }
             }
         }
 
         isMoving = (xMove != 0 || yMove != 0);
 
-        /// 5. Tick pentru animatia curenta.
-        if (isAttacking) {
-            if (animAttack != null) animAttack.tick();
-        } else if (isMoving) {
-            if (animRun != null) animRun.tick();
-        } else {
-            if (animIdle != null) animIdle.tick();
-        }
+        if      (isAttacking) { if (animAttack != null) animAttack.tick(); }
+        else if (isMoving)    { if (animRun    != null) animRun.tick();    }
+        else                  { if (animIdle   != null) animIdle.tick();   }
 
-        /// 6. Aplicam miscarea efectiva, separata pe axe, pentru coliziuni stabile.
-        if (!isAttacking) {
-            if (xMove != 0) {
-                float newX = x + xMove;
-                if (CanMoveTo(newX, y, map)) {
-                    x = newX;
-                }
-            }
+        if (xMove != 0) { float nx = x + xMove; if (CanMoveTo(nx, y, map)) x = nx; }
+        if (yMove != 0) { float ny = y + yMove; if (CanMoveTo(x, ny, map)) y = ny; }
 
-            if (yMove != 0) {
-                float newY = y + yMove;
-                if (CanMoveTo(x, newY, map)) {
-                    y = newY;
-                }
-            }
-        }
-
-        /// 7. Daca scheletul nu s-a miscat deloc, fortam recalcularea path-ului.
-        if (!isAttacking && distance < aggroRadius) {
-            boolean stuck = (Math.abs(x - oldX) < 0.1f && Math.abs(y - oldY) < 0.1f);
-            if (stuck) {
-                path = null;
-                pathCooldown = 0;
-            }
-        }
-
-        /// 8. Timer-ul pentru atac scade in fiecare frame.
-        if (attackTimer > 0) {
-            attackTimer--;
-            if (attackTimer == 0) {
-                isAttacking = false;
+        if (!touching && distance < aggroRadius) {
+            if (Math.abs(x - oldX) < 0.1f && Math.abs(y - oldY) < 0.1f) {
+                path = null; pathCooldown = 0;
             }
         }
     }
 
     /*! \fn public void Draw(Graphics g, int cameraX, int cameraY, int offsetX, int offsetY)
         \brief Deseneaza scheletul, umbra si hitbox-urile de debug.
+        \details Bara de viata NU este desenata aici — randata separat prin drawHealthBarOnly().
+                 Flash-ul rosu a fost eliminat.
      */
     public void Draw(Graphics g, int cameraX, int cameraY, int offsetX, int offsetY) {
+        if (isDead) return;
+
         int screenX = offsetX + (int) x - cameraX;
         int screenY = offsetY + (int) y - cameraY;
-
         Graphics2D g2 = (Graphics2D) g;
 
-        /// Umbra 2.5D de sub personaj.
         g2.setColor(new Color(0, 0, 0, 60));
         g2.fillOval(screenX + 8, screenY + 24, 16, 8);
 
         if (animIdle != null && animRun != null && animAttack != null) {
-            int renderWidth = 24;
-            int renderHeight = 24;
+            int rw = 24, rh = 24, dx = screenX + 4, dy = screenY + 8;
 
-            int drawX = screenX + 4;
-            int drawY = screenY + 8;
-
-            BufferedImage currentFrame;
-            if (isAttacking) {
-                currentFrame = animAttack.getCurrentFrame();
-            } else if (isMoving) {
-                currentFrame = animRun.getCurrentFrame();
-            } else {
-                currentFrame = animIdle.getCurrentFrame();
-            }
+            BufferedImage frame;
+            if      (isAttacking) frame = animAttack.getCurrentFrame();
+            else if (isMoving)    frame = animRun.getCurrentFrame();
+            else                  frame = animIdle.getCurrentFrame();
 
             if (facingRight) {
-                g2.drawImage(currentFrame, drawX, drawY, renderWidth, renderHeight, null);
+                g2.drawImage(frame, dx, dy, rw, rh, null);
             } else {
-                g2.drawImage(currentFrame,
-                        drawX + renderWidth, drawY, drawX, drawY + renderHeight,
-                        0, 0, currentFrame.getWidth(), currentFrame.getHeight(), null);
+                g2.drawImage(frame, dx + rw, dy, dx, dy + rh,
+                        0, 0, frame.getWidth(), frame.getHeight(), null);
             }
         } else {
-            g2.setColor(Color.RED);
+            g2.setColor(Color.DARK_GRAY);
             g2.fillRect(screenX, screenY, width, height);
         }
 
-        /// DEBUG: afisam hitbox-urile.
         if (Game.showHitboxes) {
             g2.setColor(Color.GREEN);
             g2.drawRect(screenX, screenY, width, height);
-
             g2.setColor(Color.RED);
             g2.drawRect(screenX + feetOffsetX, screenY + feetOffsetY, feetWidth, feetHeight);
         }

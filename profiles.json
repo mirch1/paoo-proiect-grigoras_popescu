@@ -1,0 +1,32 @@
+{
+  "lastUsed": "matei",
+  "profiles": [
+    {
+      "name": "mirch",
+      "level": 1,
+      "playerX": 0.0,
+      "playerY": 0.0,
+      "cinematicMode": true,
+      "musicVolume": 100,
+      "sfxVolume": 100
+    },
+    {
+      "name": "mario",
+      "level": 1,
+      "playerX": 0.0,
+      "playerY": 0.0,
+      "cinematicMode": true,
+      "musicVolume": 100,
+      "sfxVolume": 100
+    },
+    {
+      "name": "matei",
+      "level": 1,
+      "playerX": 0.0,
+      "playerY": 0.0,
+      "cinematicMode": true,
+      "musicVolume": 100,
+      "sfxVolume": 100
+    }
+  ]
+}

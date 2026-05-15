@@ -8,6 +8,13 @@ public class GameSettings {
     public static boolean musicEnabled = true;
     public static boolean sfxEnabled = true;
     public static boolean cinematicMode = true;
+
+    /*! \brief Volumul muzicii de fundal (0.0 = mut, 1.0 = maxim). */
+    public static int musicVolume = 100;
+
+    /*! \brief Volumul efectelor sonore (0.0 = mut, 1.0 = maxim). */
+    public static int sfxVolume   = 100;
+
     public static String difficulty = "NORMAL";
 
     public static void resetToDefault() {

@@ -3,7 +3,6 @@ package PaooGame;
 import PaooGame.enemies.Enemy;
 import PaooGame.enemies.Skeleton;
 import PaooGame.enemies.Spider;
-
 import PaooGame.GameWindow.GameWindow;
 import PaooGame.Graphics.Assets;
 import PaooGame.Tiles.Tile;
@@ -13,57 +12,124 @@ import java.awt.*;
 import java.awt.image.BufferStrategy;
 
 /*! \class Game
-    \brief Clasa principala a proiectului. Gestioneaza Game-Loop-ul, starile jocului si randarea.
- */
+    \brief Clasa principala a jocului.
+
+    \details
+    Aceasta clasa coordoneaza intreaga rulare a jocului:
+    - initializeaza fereastra si resursele;
+    - porneste game-loop-ul la aproximativ 60 FPS;
+    - actualizeaza inputul, entitatile si camera;
+    - deseneaza harta, personajele, meniul de pauza si HUD-ul;
+    - gestioneaza salvarea si tranzitiile intre niveluri.
+
+    Fisierul a fost rescris folosind exact numele de fisiere din folderul tau `res/maps`:
+    - level1_base.png
+    - level1_foreground.png
+    - level2_base.png
+    - level2_foreground.png
+    - level3_base.png
+    - level3_foreground.png
+    - harta_primul_nivel.tmx
+    - harta_nivel2_dungeon.tmx
+    - harta_nivel3_the_great_hall.tmx
+*/
 public class Game implements Runnable {
+
+    /// Fereastra principala a jocului.
     private GameWindow wnd;
-    private boolean    runState;
-    private Thread     gameThread;
+
+    /// Arata daca jocul ruleaza in acest moment.
+    private boolean runState;
+
+    /// Thread-ul folosit pentru bucla principala a jocului.
+    private Thread gameThread;
+
+    /// BufferStrategy pentru randare fluida.
     private BufferStrategy bs;
 
-    private Map        map;
+    /// Harta nivelului curent.
+    private Map map;
+
+    /// Managerul de input de la tastatura.
     private KeyManager keyManager;
-    private Camera     camera;
 
-    private Player   player;
-    private Enemy    wolf;
+    /// Camera care urmareste jucatorul in lume.
+    private Camera camera;
+
+    /// Jucatorul principal.
+    private Player player;
+
+    /// Inamic specific nivelului 1.
+    private Enemy wolf;
+
+    /// Inamic specific nivelului 2.
     private Skeleton skeleton;
-    private Spider   spider;
 
+    /// Al doilea inamic specific nivelului 2.
+    private Spider spider;
+
+    /// Nivelul curent incarcat.
     private int currentLevel;
+
+    /// Cooldown scurt pentru a preveni tranzitii multiple instant.
     private int transitionCooldown;
 
-    private final int LOGICAL_WIDTH  = 800;
-    private final int LOGICAL_HEIGHT = 600;
+    /// Latimea logica a scenei de joc.
+    private final int LOGICALWIDTH = 800;
 
+    /// Inaltimea logica a scenei de joc.
+    private final int LOGICALHEIGHT = 600;
+
+    /// Contextul grafic folosit la desenare.
     private Graphics g;
 
-    private boolean          isPaused              = false;
-    private int              pauseMenuSelection    = 0;
+    /// Arata daca jocul este in pauza.
+    private boolean isPaused = false;
+
+    /// Optiunea curenta selectata in meniul de pauza.
+    private int pauseMenuSelection = 0;
+
+    /// Marcheaza revenirea in meniul principal dupa oprirea jocului.
     private volatile boolean returnToMenuRequested = false;
 
+    /// Activeaza overlay-ul de debug.
     public static boolean showHitboxes = false;
-    public static int     currentFPS   = 0;
 
+    /// FPS-ul curent calculat o data pe secunda.
+    public static int currentFPS = 0;
+
+    /// Stari anterioare ale tastelor pentru detectia apasarilor unice.
     private boolean lastEscapeState = false;
-    private boolean lastUpState     = false;
-    private boolean lastDownState   = false;
-    private boolean lastEnterState  = false;
-    private boolean lastDebugState  = false;
+    private boolean lastUpState = false;
+    private boolean lastDownState = false;
+    private boolean lastEnterState = false;
+    private boolean lastDebugState = false;
 
-    private boolean       loadSavedGame   = false;
-    private SaveGameState savedGameState  = null;
+    /// Daca este true, jocul incearca sa incarce progresul salvat.
+    private boolean loadSavedGame = false;
+
+    /// Obiectul care retine starea citita din save file.
+    private SaveGameState savedGameState = null;
 
     /*! \fn public Game(String title, int width, int height)
         \brief Constructor pentru joc nou.
-     */
+
+        \param title Titlul ferestrei.
+        \param width Latimea ferestrei.
+        \param height Inaltimea ferestrei.
+    */
     public Game(String title, int width, int height) {
         this(title, width, height, false);
     }
 
     /*! \fn public Game(String title, int width, int height, boolean loadSavedGame)
-        \brief Constructor cu optiunea de incarcare a unei salvari.
-     */
+        \brief Constructor general al jocului.
+
+        \param title Titlul ferestrei.
+        \param width Latimea ferestrei.
+        \param height Inaltimea ferestrei.
+        \param loadSavedGame Daca este true, jocul porneste dintr-o salvare.
+    */
     public Game(String title, int width, int height, boolean loadSavedGame) {
         wnd = new GameWindow(title, width, height);
         runState = false;
@@ -71,12 +137,18 @@ public class Game implements Runnable {
     }
 
     /*! \fn private void InitGame()
-        \brief Initializeaza fereastra, resursele, camera si primul nivel.
-     */
+        \brief Initializeaza jocul si resursele de baza.
+
+        \details
+        Se construieste fereastra, se incarca asset-urile, se initializeaza
+        inputul si camera, iar apoi se incarca fie salvarea existenta,
+        fie primul nivel al jocului.
+    */
     private void InitGame() {
         wnd.BuildGameWindow();
         Assets.Init();
-        currentLevel       = 1;
+
+        currentLevel = 1;
         transitionCooldown = 0;
 
         keyManager = new KeyManager();
@@ -84,7 +156,7 @@ public class Game implements Runnable {
         wnd.GetCanvas().setFocusable(true);
         wnd.GetCanvas().requestFocus();
 
-        camera = new Camera(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+        camera = new Camera(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
 
         if (loadSavedGame) {
             savedGameState = SaveManager.loadGame();
@@ -92,7 +164,9 @@ public class Game implements Runnable {
                 loadLevel(savedGameState.getLevel());
                 if (player != null) {
                     player.setPosition(savedGameState.getPlayerX(), savedGameState.getPlayerY());
-                    if (camera != null && map != null) camera.CenterOnPlayer(player, map);
+                }
+                if (camera != null && map != null && player != null) {
+                    camera.CenterOnPlayer(player, map);
                 }
             } else {
                 currentLevel = 1;
@@ -105,36 +179,49 @@ public class Game implements Runnable {
     }
 
     /*! \fn public void run()
-        \brief Game-Loop principal: 60 FPS, contorizare FPS pentru overlay-ul de debug.
-     */
+        \brief Game-loop-ul principal.
+
+        \details
+        Ruleaza cat timp `runState` este activ si incearca sa mentina
+        actualizarea si randarea la aproximativ 60 FPS.
+    */
+    @Override
     public void run() {
         InitGame();
 
-        long   oldTime = System.nanoTime();
-        long   curentTime;
-        final  double timeFrame = 1000000000.0 / 60;
-        int    frames  = 0;
-        long   timer   = System.currentTimeMillis();
+        long oldTime = System.nanoTime();
+        long currentTime;
+        final double timeFrame = 1000000000.0 / 60.0;
+
+        int frames = 0;
+        long timer = System.currentTimeMillis();
 
         while (runState) {
-            curentTime = System.nanoTime();
-            if ((curentTime - oldTime) > timeFrame) {
+            currentTime = System.nanoTime();
+
+            if ((currentTime - oldTime) > timeFrame) {
                 Update();
-                if (!runState) break;
+                if (!runState) {
+                    break;
+                }
+
                 Draw();
-                oldTime = curentTime;
+                oldTime = currentTime;
                 frames++;
             }
-            if (System.currentTimeMillis() - timer > 1000) {
+
+            if (System.currentTimeMillis() - timer >= 1000) {
                 currentFPS = frames;
-                frames     = 0;
-                timer     += 1000;
+                frames = 0;
+                timer += 1000;
             }
         }
 
         if (returnToMenuRequested) {
             SwingUtilities.invokeLater(() -> {
-                if (wnd != null) wnd.CloseWindow();
+                if (wnd != null) {
+                    wnd.CloseWindow();
+                }
                 Toolkit.getDefaultToolkit().sync();
                 SwingUtilities.invokeLater(() -> {
                     MenuWindow menu = new MenuWindow();
@@ -146,242 +233,373 @@ public class Game implements Runnable {
 
     /*! \fn public synchronized void StartGame()
         \brief Porneste thread-ul principal al jocului.
-     */
+    */
     public synchronized void StartGame() {
         if (!runState) {
-            runState   = true;
+            runState = true;
             gameThread = new Thread(this);
             gameThread.start();
         }
     }
 
     /*! \fn public synchronized void StopGame()
-        \brief Opreste thread-ul principal. Nu apeleaza join() pe acelasi thread (deadlock prevention).
-     */
+        \brief Opreste jocul si asteapta terminarea thread-ului.
+    */
     public synchronized void StopGame() {
         if (runState) {
             runState = false;
-            if (Thread.currentThread() == gameThread) return;
-            try { gameThread.join(); }
-            catch (InterruptedException ex) { ex.printStackTrace(); }
+        }
+
+        if (Thread.currentThread() == gameThread) {
+            return;
+        }
+
+        try {
+            if (gameThread != null) {
+                gameThread.join();
+            }
+        } catch (InterruptedException ex) {
+            ex.printStackTrace();
         }
     }
 
     // =========================================================================
-    //  UPDATE
+    // UPDATE
     // =========================================================================
 
     /*! \fn private void Update()
-        \brief Actualizeaza logica jocului: input, pauza, entitati, camera, combat, tranzitii.
-     */
+        \brief Actualizeaza starea jocului pentru un frame.
+
+        \details
+        Trateaza inputul, meniul de pauza, miscarea entitatilor,
+        combat-ul, camera si tranzitiile intre niveluri.
+    */
     private void Update() {
         keyManager.Update();
 
-        /// 1. DEBUG MODE — tasta H.
-        if (keyManager.debug && !lastDebugState) showHitboxes = !showHitboxes;
+        /// Comutare mod debug.
+        if (keyManager.debug && !lastDebugState) {
+            showHitboxes = !showHitboxes;
+        }
         lastDebugState = keyManager.debug;
 
-        /// 2. PAUZA — tasta ESC.
-        if (keyManager.escape && !lastEscapeState) isPaused = !isPaused;
+        /// Comutare pauza.
+        if (keyManager.escape && !lastEscapeState) {
+            isPaused = !isPaused;
+        }
         lastEscapeState = keyManager.escape;
 
-        /// 3. MENIU PAUZA — navigare si selectie.
+        /// Daca jocul este in pauza, actualizam doar navigarea prin meniu.
         if (isPaused) {
             if (keyManager.up && !lastUpState) {
                 pauseMenuSelection--;
-                if (pauseMenuSelection < 0) pauseMenuSelection = 3;
+                if (pauseMenuSelection < 0) {
+                    pauseMenuSelection = 3;
+                }
             }
+
             if (keyManager.down && !lastDownState) {
                 pauseMenuSelection++;
-                if (pauseMenuSelection > 3) pauseMenuSelection = 0;
+                if (pauseMenuSelection > 3) {
+                    pauseMenuSelection = 0;
+                }
             }
-            if (keyManager.enter && !lastEnterState) executePauseMenuAction();
 
-            lastUpState    = keyManager.up;
-            lastDownState  = keyManager.down;
+            if (keyManager.enter && !lastEnterState) {
+                executePauseMenuAction();
+            }
+
+            lastUpState = keyManager.up;
+            lastDownState = keyManager.down;
             lastEnterState = keyManager.enter;
-            return; /// Nu actualizam logica jocului cat timp suntem in pauza.
+            return;
         }
 
-        /// 4. ACTUALIZARE ENTITATI.
-        if (player   != null && map != null) player.Update(keyManager, map);
-        if (wolf     != null && map != null) wolf.Update(map);
-        if (skeleton != null && map != null) skeleton.Update(map);
-        if (spider   != null && map != null) spider.Update(map);
+        /// Actualizare entitati.
+        if (player != null && map != null) {
+            player.Update(keyManager, map);
+        }
+        if (wolf != null && map != null) {
+            wolf.Update(map);
+        }
+        if (skeleton != null && map != null) {
+            skeleton.Update(map);
+        }
+        if (spider != null && map != null) {
+            spider.Update(map);
+        }
 
-        /// 5. CAMERA.
-        if (camera != null && player != null && map != null)
+        /// Camera urmareste jucatorul activ.
+        if (camera != null && player != null && map != null) {
             camera.CenterOnPlayer(player, map);
+        }
 
-        /// 6. TIMER TRANZITIE.
-        if (transitionCooldown > 0) transitionCooldown--;
+        /// Scadem cooldown-ul pentru schimbarea de nivel.
+        if (transitionCooldown > 0) {
+            transitionCooldown--;
+        }
 
-        /// 7. TRANZITIE NIVEL.
+        /// Verificam tranzitiile si combat-ul.
         checkLevelTransition();
+        if (player != null) {
+            checkCombat();
+        }
 
-        /// 8. COMBAT.
-        if (player != null) checkCombat();
+        lastUpState = keyManager.up;
+        lastDownState = keyManager.down;
+        lastEnterState = keyManager.enter;
     }
 
     // =========================================================================
-    //  COMBAT
+    // COMBAT
     // =========================================================================
 
     /*! \fn private void checkCombat()
-        \brief Verifica coliziunile de combat si aplica damage.
-        \details Logica de atac:
-                 1. Atacul jucatorului: hitbox-ul de atac (sabie) loveste inamicii vii.
-                 2. Damage de contact: inamicii ale caror getFeetRect() se suprapun cu al
-                    jucatorului aplica damage — NUMAI la contact fizic real, nu la distanta.
-                 3. Proiectilul Spider: panza activa la mai putin de 16px de jucator.
-                 4. Respawn la moartea jucatorului.
-     */
+        \brief Verifica interactiunile de lupta dintre jucator si inamici.
+    */
     private void checkCombat() {
-        if (player == null || player.isDead()) return;
-
-        Rectangle playerAtk  = player.getAttackHitbox();
-        Rectangle playerFeet = player.getFeetRect();
-
-        /// 1. ATACUL JUCATORULUI — hitbox-ul sabiei loveste inamicii.
-        if (playerAtk != null) {
-            if (wolf     != null && !wolf.isDead()     && playerAtk.intersects(wolf.getFeetRect()))
-                wolf.takeDamage(Player.ATTACK_DAMAGE);
-            if (skeleton != null && !skeleton.isDead() && playerAtk.intersects(skeleton.getFeetRect()))
-                skeleton.takeDamage(Player.ATTACK_DAMAGE);
-            if (spider   != null && !spider.isDead()   && playerAtk.intersects(spider.getFeetRect()))
-                spider.takeDamage(Player.ATTACK_DAMAGE);
+        if (player == null || player.isDead()) {
+            return;
         }
 
-        /// 2. DAMAGE DE CONTACT — inamicii aplica damage NUMAI cand hitbox-urile se ating fizic.
-        if (wolf     != null && !wolf.isDead()     && playerFeet.intersects(wolf.getFeetRect()))
-            player.takeDamage(Enemy.ATTACK_DAMAGE);
-        if (skeleton != null && !skeleton.isDead() && playerFeet.intersects(skeleton.getFeetRect()))
-            player.takeDamage(Skeleton.ATTACK_DAMAGE);
+        Rectangle playerAtk = player.getAttackHitbox();
+        Rectangle playerFeet = player.getFeetRect();
 
-        /// 3. PROIECTIL SPIDER — panza activa la distanta mica de jucator.
+        /// Atacul jucatorului loveste doar inamicii vii aflati in raza sabiei.
+        if (playerAtk != null) {
+            if (wolf != null && !wolf.isDead() && playerAtk.intersects(wolf.getFeetRect())) {
+                wolf.takeDamage(Player.ATTACK_DAMAGE);
+            }
+            if (skeleton != null && !skeleton.isDead() && playerAtk.intersects(skeleton.getFeetRect())) {
+                skeleton.takeDamage(Player.ATTACK_DAMAGE);
+            }
+            if (spider != null && !spider.isDead() && playerAtk.intersects(spider.getFeetRect())) {
+                spider.takeDamage(Player.ATTACK_DAMAGE);
+            }
+        }
+
+        /// Damage de contact.
+        if (wolf != null && !wolf.isDead() && playerFeet.intersects(wolf.getFeetRect())) {
+            player.takeDamage(Enemy.ATTACK_DAMAGE);
+        }
+        if (skeleton != null && !skeleton.isDead() && playerFeet.intersects(skeleton.getFeetRect())) {
+            player.takeDamage(Skeleton.ATTACK_DAMAGE);
+        }
+
+        /// Proiectilul paianjenului loveste la distanta mica fata de jucator.
         if (spider != null && !spider.isDead() && spider.isWebActive()) {
-            float wx   = spider.getWebX();
-            float wy   = spider.getWebY();
-            float px   = player.GetFeetCenterX();
-            float py   = player.GetFeetBottomY();
+            float wx = spider.getWebX();
+            float wy = spider.getWebY();
+            float px = player.GetFeetCenterX();
+            float py = player.GetFeetBottomY();
             double dist = Math.sqrt((wx - px) * (wx - px) + (wy - py) * (wy - py));
+
             if (dist < 16) {
                 player.takeDamage(Spider.WEB_DAMAGE);
                 spider.deactivateWeb();
             }
         }
 
-        /// 4. RESPAWN — jucatorul a murit, reincarcam nivelul curent.
-        if (player.isDead()) loadLevel(currentLevel);
+        /// Daca jucatorul moare, reincarcam nivelul curent.
+        if (player.isDead()) {
+            loadLevel(currentLevel);
+        }
     }
 
     // =========================================================================
-    //  MENIU PAUZA
+    // MENIU PAUZA
     // =========================================================================
 
     /*! \fn private void executePauseMenuAction()
         \brief Executa actiunea selectata in meniul de pauza.
-     */
+    */
     private void executePauseMenuAction() {
         switch (pauseMenuSelection) {
-            case 0:
+            case 0 -> {
                 Window owner = SwingUtilities.getWindowAncestor(wnd.GetCanvas());
                 SwingUtilities.invokeLater(() -> SettingsDialog.showSettings(owner));
-                break;
-            case 1:
-                saveCurrentGame(true);
-                break;
-            case 2:
-                returnToMainMenu();
-                break;
-            case 3:
-                System.exit(0);
-                break;
+            }
+            case 1 -> saveCurrentGame(true);
+            case 2 -> returnToMainMenu();
+            case 3 -> System.exit(0);
         }
     }
 
     /*! \fn private void saveCurrentGame(boolean showMessage)
-        \brief Salveaza starea curenta a jocului pe disc.
-        \param showMessage Daca true, afiseaza un dialog de confirmare.
-     */
+        \brief Salveaza progresul curent.
+
+        \param showMessage Daca este true, afiseaza mesaj de confirmare.
+    */
     private void saveCurrentGame(boolean showMessage) {
-        if (player == null) return;
+        if (player == null) {
+            return;
+        }
+
         SaveManager.saveGame(currentLevel, player.GetX(), player.GetY());
+
         if (showMessage) {
-            SwingUtilities.invokeLater(() ->
-                JOptionPane.showMessageDialog(null,
-                    "Jocul a fost salvat cu succes.", "Save Game",
-                    JOptionPane.INFORMATION_MESSAGE)
-            );
+            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                    null,
+                    "Jocul a fost salvat cu succes.",
+                    "Save Game",
+                    JOptionPane.INFORMATION_MESSAGE
+            ));
         }
     }
 
     /*! \fn private void returnToMainMenu()
-        \brief Marcheaza cererea de revenire in meniu si opreste bucla.
-     */
+        \brief Cere revenirea in meniul principal si opreste jocul.
+    */
     private void returnToMainMenu() {
         returnToMenuRequested = true;
         runState = false;
     }
 
     // =========================================================================
-    //  DRAW
+    // DRAW
     // =========================================================================
 
     /*! \fn private void Draw()
-        \brief Randeaza toate elementele grafice in ordinea corecta:
-               Harta → Inamici → Jucator → HUD → Foreground → Bare HP → Pauza → Debug.
-        \details Barele HP ale inamicilor sunt randate DUPA DrawForeground() — apar deasupra copacilor.
-     */
+        \brief Randeaza cadrul curent al jocului.
+
+        \details
+        Ordinea de desenare este:
+        1. harta de baza,
+        2. inamicii,
+        3. jucatorul,
+        4. foreground-ul,
+        5. barele HP ale inamicilor,
+        6. meniul de pauza,
+        7. overlay-ul de debug,
+        8. HUD-ul jucatorului.
+
+        HUD-ul este desenat ultimul pentru a ramane permanent deasupra copacilor
+        si a elementelor de foreground.
+    */
     private void Draw() {
-        if (wnd == null || wnd.GetCanvas() == null || !wnd.GetCanvas().isDisplayable()) return;
+        if (wnd == null || wnd.GetCanvas() == null || !wnd.GetCanvas().isDisplayable()) {
+            return;
+        }
 
         bs = wnd.GetCanvas().getBufferStrategy();
         if (bs == null) {
-            try { wnd.GetCanvas().createBufferStrategy(3); return; }
-            catch (Exception e) { e.printStackTrace(); }
+            try {
+                wnd.GetCanvas().createBufferStrategy(3);
+                return;
+            } catch (Exception e) {
+                e.printStackTrace();
+                return;
+            }
         }
 
         g = bs.getDrawGraphics();
         Graphics2D g2d = (Graphics2D) g;
-
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        /// Scalare la dimensiunea fizica a ferestrei.
-        double scaleX = (double) wnd.GetWndWidth()  / LOGICAL_WIDTH;
-        double scaleY = (double) wnd.GetWndHeight() / LOGICAL_HEIGHT;
+        /// Scalare din rezolutia logica in rezolutia reala a ferestrei.
+        double scaleX = (double) wnd.GetWndWidth() / LOGICALWIDTH;
+        double scaleY = (double) wnd.GetWndHeight() / LOGICALHEIGHT;
         g2d.scale(scaleX, scaleY);
 
-        /// Fundal negru de baza.
+        /// Curatam fundalul cu o culoare inchisa.
         g.setColor(new Color(10, 15, 10));
-        g.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+        g.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
 
-        /// Offset de centrare daca harta e mai mica decat ecranul.
-        int offsetX = 0, offsetY = 0;
+        /// Offset pentru centrare atunci cand harta este mai mica decat viewport-ul logic.
+        int offsetX = 0;
+        int offsetY = 0;
         if (map != null) {
-            if (map.getPixelWidth()  < LOGICAL_WIDTH)  offsetX = (LOGICAL_WIDTH  - map.getPixelWidth())  / 2;
-            if (map.getPixelHeight() < LOGICAL_HEIGHT) offsetY = (LOGICAL_HEIGHT - map.getPixelHeight()) / 2;
+            if (map.getPixelWidth() < LOGICALWIDTH) {
+                offsetX = (LOGICALWIDTH - map.getPixelWidth()) / 2;
+            }
+            if (map.getPixelHeight() < LOGICALHEIGHT) {
+                offsetY = (LOGICALHEIGHT - map.getPixelHeight()) / 2;
+            }
         }
 
-        /// 1. HARTA (fundal: sol, ziduri, apa etc.)
-        if (map != null && camera != null)
+        /// 1. Harta de baza.
+        if (map != null && camera != null) {
             map.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
 
-        /// 2. INAMICI — sprite-uri, fara bara de viata (randata la pasul 6).
-        if (wolf     != null && camera != null) wolf.Draw(g,     (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-        if (skeleton != null && camera != null) skeleton.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-        if (spider   != null && camera != null) spider.Draw(g,   (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        /// 2. Inamicii.
+        if (wolf != null && camera != null) {
+            wolf.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
+        if (skeleton != null && camera != null) {
+            skeleton.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
+        if (spider != null && camera != null) {
+            spider.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
 
-        /// 3. JUCATOR.
-        if (player != null && camera != null)
+        /// 3. Jucatorul.
+        if (player != null && camera != null) {
             player.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
 
-        /// 4. HUD — bara mare de HP a jucatorului in coltul stanga-jos.
+        /// 4. Foreground-ul hartii.
+        if (map != null && camera != null) {
+            map.DrawForeground(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
+
+        /// 5. Barele de viata ale inamicilor, desenate peste foreground.
+        if (camera != null) {
+            if (wolf != null) {
+                wolf.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            }
+            if (skeleton != null) {
+                skeleton.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            }
+            if (spider != null) {
+                spider.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            }
+        }
+
+        /// 6. Meniul de pauza.
+        if (isPaused) {
+            g2d.setColor(new Color(0, 0, 0, 180));
+            g2d.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
+
+            String[] options = {"SETTINGS", "SAVE GAME", "RETURN TO MENU", "EXIT"};
+            Font font = new Font("Serif", Font.BOLD, 36);
+            g2d.setFont(font);
+            FontMetrics fm = g2d.getFontMetrics(font);
+            int startY = 250;
+
+            for (int i = 0; i < options.length; i++) {
+                int tw = fm.stringWidth(options[i]);
+                int x = (LOGICALWIDTH - tw) / 2;
+                int y = startY + i * 70;
+
+                if (i == pauseMenuSelection) {
+                    g2d.setColor(new Color(218, 165, 32));
+                    String sel = "> " + options[i] + " <";
+                    g2d.drawString(sel, (LOGICALWIDTH - fm.stringWidth(sel)) / 2, y);
+                } else {
+                    g2d.setColor(new Color(180, 180, 190));
+                    g2d.drawString(options[i], x, y);
+                }
+            }
+        }
+
+        /// 7. Overlay debug.
+        if (showHitboxes) {
+            g2d.setColor(Color.YELLOW);
+            g2d.setFont(new Font("Consolas", Font.BOLD, 20));
+            g2d.drawString("FPS: " + currentFPS, 15, 30);
+
+            g2d.setColor(Color.WHITE);
+            g2d.setFont(new Font("Consolas", Font.PLAIN, 14));
+            g2d.drawString("Mod Debug: ON", 15, 50);
+        }
+
+        /// 8. HUD-ul jucatorului se deseneaza ultimul, ca sa fie mereu vizibil.
         if (player != null && !player.isDead()) {
-            int   hudX  = 20;
-            int   hudY  = LOGICAL_HEIGHT - 30;
-            int   hudW  = 150;
-            int   hudH  = 12;
+            int hudX = 20;
+            int hudY = LOGICALHEIGHT - 30;
+            int hudW = 150;
+            int hudH = 12;
             float ratio = (float) player.getCurrentHp() / player.getMaxHp();
 
             g2d.setColor(new Color(20, 20, 20, 200));
@@ -390,159 +608,131 @@ public class Game implements Runnable {
             g2d.setColor(new Color(100, 10, 10, 220));
             g2d.fillRoundRect(hudX, hudY, hudW, hudH, 4, 4);
 
-            Color hudColor = ratio > 0.6f ? new Color(50,  200, 50)
-                           : ratio > 0.3f ? new Color(220, 190, 20)
-                           :                new Color(210,  40, 40);
+            Color hudColor = ratio > 0.6f
+                    ? new Color(50, 200, 50)
+                    : ratio > 0.3f
+                    ? new Color(220, 190, 20)
+                    : new Color(210, 40, 40);
+
             g2d.setColor(hudColor);
-            g2d.fillRoundRect(hudX, hudY, (int)(hudW * ratio), hudH, 4, 4);
+            g2d.fillRoundRect(hudX, hudY, (int) (hudW * ratio), hudH, 4, 4);
 
             g2d.setColor(Color.WHITE);
             g2d.setFont(new Font("Consolas", Font.BOLD, 11));
-            g2d.drawString("HP: " + player.getCurrentHp() + " / " + player.getMaxHp(),
-                    hudX + hudW + 8, hudY + 10);
+            g2d.drawString(
+                    "HP: " + player.getCurrentHp() + " / " + player.getMaxHp(),
+                    hudX + hudW + 8,
+                    hudY + 10
+            );
         }
 
-        /// 5. FOREGROUND (copaci, acoperisuri) — PESTE sprites, SUB barele de viata ale inamicilor.
-        if (map != null && camera != null)
-            map.DrawForeground(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-
-        /// 6. BARE HP INAMICI — randate DUPA foreground, deci DEASUPRA copacilor.
-        ///    drawHealthBarOnly() nu face nimic daca inamicul e mort sau are HP plin.
-        if (camera != null) {
-            if (wolf     != null) wolf.drawHealthBarOnly(    g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-            if (skeleton != null) skeleton.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-            if (spider   != null) spider.drawHealthBarOnly(  g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        if (runState && wnd.GetCanvas().isDisplayable()) {
+            bs.show();
         }
-
-        /// 7. MENIU PAUZA.
-        if (isPaused) {
-            g2d.setColor(new Color(0, 0, 0, 180));
-            g2d.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
-
-            String[] options = {"SETTINGS", "SAVE GAME", "RETURN TO MENU", "EXIT"};
-            Font font = new Font("Serif", Font.BOLD, 36);
-            g2d.setFont(font);
-            FontMetrics fm = g2d.getFontMetrics(font);
-            int startY = 250;
-            for (int i = 0; i < options.length; i++) {
-                int tw = fm.stringWidth(options[i]);
-                int x  = (LOGICAL_WIDTH - tw) / 2;
-                int y  = startY + (i * 70);
-                if (i == pauseMenuSelection) {
-                    g2d.setColor(new Color(218, 165, 32));
-                    String sel = "> " + options[i] + " <";
-                    g2d.drawString(sel, (LOGICAL_WIDTH - fm.stringWidth(sel)) / 2, y);
-                } else {
-                    g2d.setColor(new Color(180, 180, 190));
-                    g2d.drawString(options[i], x, y);
-                }
-            }
-        }
-
-        if (GameSettings.cinematicMode) drawCinematicVignette(g2d);
-
-        /// 8. OVERLAY DEBUG (FPS + Mod Debug) — desenat ultimul, deasupra tuturor.
-        if (showHitboxes) {
-            g2d.setColor(Color.YELLOW);
-            g2d.setFont(new Font("Consolas", Font.BOLD, 20));
-            g2d.drawString("FPS: " + currentFPS, 15, 30);
-            g2d.setColor(Color.WHITE);
-            g2d.setFont(new Font("Consolas", Font.PLAIN, 14));
-            g2d.drawString("Mod Debug: ON", 15, 50);
-        }
-
-        if (runState && wnd.GetCanvas().isDisplayable()) bs.show();
         g.dispose();
     }
 
-    /*! \fn private void drawCinematicVignette(Graphics2D g2d)
-        \brief Aplica benzi cinematice sus-jos si umbre laterale.
-     */
-    private void drawCinematicVignette(Graphics2D g2d) {
-        g2d.setColor(new Color(0, 0, 0, 70));
-        g2d.fillRect(0, 0, LOGICAL_WIDTH, 38);
-        g2d.fillRect(0, LOGICAL_HEIGHT - 38, LOGICAL_WIDTH, 38);
-
-        g2d.setPaint(new GradientPaint(0, 0, new Color(0,0,0,85), 90, 0, new Color(0,0,0,0)));
-        g2d.fillRect(0, 0, 90, LOGICAL_HEIGHT);
-
-        g2d.setPaint(new GradientPaint(LOGICAL_WIDTH, 0, new Color(0,0,0,85), LOGICAL_WIDTH-90, 0, new Color(0,0,0,0)));
-        g2d.fillRect(LOGICAL_WIDTH - 90, 0, 90, LOGICAL_HEIGHT);
-    }
-
     // =========================================================================
-    //  NIVELURI
+    // NIVELURI
     // =========================================================================
 
     /*! \fn private void setPlayerSpawn(int tileCol, int tileRow)
-        \brief Pozitioneaza player-ul la coordonatele de tile si reseteaza inputul.
-     */
+        \brief Pozitioneaza jucatorul pe harta pe baza coordonatelor de tile.
+
+        \param tileCol Coloana tile-ului de spawn.
+        \param tileRow Linia tile-ului de spawn.
+    */
     private void setPlayerSpawn(int tileCol, int tileRow) {
-        if (player == null) return;
-        float spawnX = tileCol * Tile.TILE_WIDTH  + (Tile.TILE_WIDTH  - player.GetWidth())  / 2.0f;
-        float spawnY = tileRow * Tile.TILE_HEIGHT + (Tile.TILE_HEIGHT - player.GetHeight()) / 2.0f;
+        if (player == null) {
+            return;
+        }
+
+        float spawnX = tileCol * Tile.TILE_WIDTH + Tile.TILE_WIDTH / 2.0f - player.GetWidth() / 2.0f;
+        float spawnY = tileRow * Tile.TILE_HEIGHT + Tile.TILE_HEIGHT / 2.0f - player.GetHeight() / 2.0f;
+
         player.setPosition(spawnX, spawnY);
-        if (camera != null && map != null) camera.CenterOnPlayer(player, map);
-        if (keyManager != null) keyManager.Clear();
+
+        if (camera != null && map != null) {
+            camera.CenterOnPlayer(player, map);
+        }
+        if (keyManager != null) {
+            keyManager.Clear();
+        }
     }
 
     /*! \fn private void loadLevel(int level)
-        \brief Incarca harta si entitatile corespunzatoare nivelului primit.
-     */
+        \brief Incarca nivelul specificat si fisierele sale vizuale/logice.
+
+        \details
+        Atentie: aici sunt folosite exact numele de fisiere pe care le-ai atasat
+        din folderul `maps`, inclusiv extensia `.png` pentru imaginile de baza
+        si foreground.
+
+        \param level Nivelul care trebuie incarcat.
+    */
     private void loadLevel(int level) {
         currentLevel = level;
-        wolf     = null;
+        wolf = null;
         skeleton = null;
-        spider   = null;
+        spider = null;
 
-        if (player == null) player = new Player(0, 0);
+        if (player == null) {
+            player = new Player(0, 0);
+        }
 
         if (level == 1) {
-            map = new Map("res/maps/level1_base.png",
-                          "res/maps/level1_foreground.png",
-                          "res/maps/harta_primul_nivel.tmx");
+            map = new Map(
+                    "res/maps/level1_base.png",
+                    "res/maps/level1_foreground.png",
+                    "res/maps/harta_primul_nivel.tmx"
+            );
             setPlayerSpawn(10, 14);
             wolf = new Enemy(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
 
         } else if (level == 2) {
-            map = new Map("res/maps/level2_base.png",
-                          "res/maps/level2_foreground.png",
-                          "res/maps/harta_nivel2_dungeon.tmx");
+            map = new Map(
+                    "res/maps/level2_base.png",
+                    "res/maps/level2_foreground.png",
+                    "res/maps/harta_nivel2_dungeon.tmx"
+            );
             setPlayerSpawn(9, 13);
             skeleton = new Skeleton(9 * Tile.TILE_WIDTH, 8 * Tile.TILE_HEIGHT, player);
-            spider   = new Spider(  9 * Tile.TILE_WIDTH, 13 * Tile.TILE_HEIGHT, player);
+            spider = new Spider(9 * Tile.TILE_WIDTH, 13 * Tile.TILE_HEIGHT, player);
 
         } else if (level == 3) {
-            map = new Map("res/maps/level3_base.png",
-                          "res/maps/level3_foreground.png",
-                          "res/maps/harta_nivel3_the_great_hall.tmx");
+            map = new Map(
+                    "res/maps/level3_base.png",
+                    "res/maps/level3_foreground.png",
+                    "res/maps/harta_nivel3_the_great_hall.tmx"
+            );
             setPlayerSpawn(9, 13);
-            /// Inamicii pentru Nivelul 3 se adauga aici cand sunt implementati.
         }
 
         transitionCooldown = 30;
     }
 
     /*! \fn private void checkLevelTransition()
-        \brief Verifica daca jucatorul a ajuns la zona de tranzitie a nivelului curent.
-     */
+        \brief Verifica daca jucatorul a ajuns intr-o zona de tranzitie.
+    */
     private void checkLevelTransition() {
-        if (transitionCooldown > 0) return;
+        if (transitionCooldown > 0 || player == null || map == null) {
+            return;
+        }
 
         int px = (int) player.GetFeetCenterX();
         int py = (int) player.GetFeetBottomY();
 
         if (currentLevel == 1) {
             if (map.isTransitionAtPixel(px, py)
-             || map.isTransitionAtPixel(px - 8, py)
-             || map.isTransitionAtPixel(px + 8, py)) {
+                    || map.isTransitionAtPixel(px - 8, py)
+                    || map.isTransitionAtPixel(px + 8, py)) {
                 loadLevel(2);
                 saveCurrentGame(false);
             }
         } else if (currentLevel == 2) {
             if (map.isTransitionAtPixel(px, py)
-             || map.isTransitionAtPixel(px - 8, py)
-             || map.isTransitionAtPixel(px + 8, py)) {
+                    || map.isTransitionAtPixel(px - 8, py)
+                    || map.isTransitionAtPixel(px + 8, py)) {
                 loadLevel(3);
                 saveCurrentGame(false);
             }

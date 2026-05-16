@@ -33,8 +33,8 @@ public class Map {
     /// false = liber.
     private boolean[][] collisionData;
 
-    /// Matrice logica pentru tranzitia catre dungeon.
-    /// true = zona de trecere catre level 2.
+    /// Matrice logica pentru tranzitia catre urmatorul nivel.
+    /// true = zona de trecere.
     /// false = zona normala.
     private boolean[][] transitionData;
 
@@ -115,7 +115,7 @@ public class Map {
     }
 
     /*! \fn public boolean isTransitionAtPixel(float x, float y)
-        \brief Verifica daca punctul dat se afla pe zona de tranzitie catre dungeon.
+        \brief Verifica daca punctul dat se afla pe o zona de tranzitie.
      */
     public boolean isTransitionAtPixel(float x, float y) {
         if (!useVisualMap || transitionData == null) {
@@ -157,7 +157,7 @@ public class Map {
     }
 
     /*! \fn private void loadLogicFromTmx(String tmxPath)
-        \brief Citeste din fisierul .tmx layer-ele Collisions si TransitionToDungeon.
+        \brief Citeste din fisierul .tmx layer-ele Collisions si tranzitiile.
      */
     private void loadLogicFromTmx(String tmxPath) {
         try {
@@ -188,6 +188,7 @@ public class Map {
 
                 if (layerName.equals("TransitionToDungeon")
                         || layerName.equals("TransitionToGreatHall")
+                        || layerName.equals("TransitionToVillage")
                         || layerName.equals("Transitions")) {
                     transitionData = readBooleanLayer(layer);
                 }
@@ -326,7 +327,7 @@ public class Map {
 
             /*
              * DEBUG:
-             * Zona de trecere spre dungeon este mov.
+             * Zona de trecere spre urmatorul nivel este mov.
              */
             if (Game.showHitboxes && transitionData != null) {
                 for (int row = 0; row < rows; row++) {
@@ -377,3 +378,4 @@ public class Map {
         }
     }
 }
+

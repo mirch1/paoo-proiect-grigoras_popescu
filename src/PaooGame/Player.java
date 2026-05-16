@@ -41,10 +41,10 @@ public class Player extends Entity {
         this.maxHp     = PLAYER_MAX_HP;
         this.currentHp = PLAYER_MAX_HP;
 
-        this.feetOffsetX = 8;
-        this.feetOffsetY = 20;
-        this.feetWidth   = 16;
-        this.feetHeight  = 12;
+        this.feetOffsetX = 10;
+        this.feetOffsetY = 24;
+        this.feetWidth   = 12;
+        this.feetHeight  = 6;
 
         try {
             int frameWidth  = 120;

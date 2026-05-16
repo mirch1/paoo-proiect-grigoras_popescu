@@ -15,8 +15,13 @@ import java.util.Properties;
     Exemplu:
     - res/saves/savegame_mirch.properties
     - res/saves/savegame_mario.properties
-*/
 
+    Problema veche era ca toate profilurile foloseau acelasi fisier:
+    res/saves/savegame.properties
+
+    Din cauza asta, cand existau mai multi jucatori, progresul se suprascria
+    sau se incarca progresul gresit.
+ */
 public class SaveManager {
 
     /*! \brief Folderul in care se salveaza fisierele de progres. */
@@ -34,6 +39,9 @@ public class SaveManager {
 
         \details
         Inlocuieste caracterele care nu sunt litere, cifre, underscore sau cratima.
+        De exemplu:
+        "Ana Maria" devine "Ana_Maria".
+
         \param name Numele profilului.
         \return Numele curatat pentru fisier.
      */
@@ -110,8 +118,11 @@ public class SaveManager {
             }
 
             /*
+             * Foarte important:
              * Actualizam si profilul activ.
+             *
              * Altfel meniul nu stie ca jucatorul acesta are progres salvat.
+             * Aici era una dintre cauzele problemei cu mai multi jucatori.
              */
             ProfileManager.saveProgress(level, playerX, playerY);
 
@@ -156,8 +167,8 @@ public class SaveManager {
             if (activeProfile != null) {
                 boolean hasProgress =
                         activeProfile.getLevel() > 1
-                                || activeProfile.getPlayerX() != 0f
-                                || activeProfile.getPlayerY() != 0f;
+                        || activeProfile.getPlayerX() != 0f
+                        || activeProfile.getPlayerY() != 0f;
 
                 if (hasProgress) {
                     return new SaveGameState(

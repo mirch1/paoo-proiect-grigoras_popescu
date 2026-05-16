@@ -1,11 +1,8 @@
 package PaooGame;
 
 import PaooGame.enemies.Enemy;
-import PaooGame.enemies.Guardian;
 import PaooGame.enemies.Skeleton;
 import PaooGame.enemies.Spider;
-import java.util.ArrayList;
-import java.util.List;
 import PaooGame.GameWindow.GameWindow;
 import PaooGame.Graphics.Assets;
 import PaooGame.Tiles.Tile;
@@ -25,20 +22,7 @@ import java.awt.image.BufferStrategy;
     - deseneaza harta, personajele, meniul de pauza si HUD-ul;
     - gestioneaza salvarea si tranzitiile intre niveluri.
 
-    Fisierul a fost rescris folosind exact numele de fisiere din folderul tau `res/maps`:
-    - level1_base.png
-    - level1_foreground.png
-    - level2_base.png
-    - level2_foreground.png
-    - level3_village_base.png
-    - level3_village_foreground.png
-    - level3_base.png
-    - level3_foreground.png
-    - harta_primul_nivel.tmx
-    - harta_nivel2_dungeon.tmx
-    - harta_nivel3_village.tmx
-    - harta_nivel3_the_great_hall.tmx
-*/
+    
 public class Game implements Runnable {
 
     /// Fereastra principala a jocului.
@@ -65,15 +49,8 @@ public class Game implements Runnable {
     /// Jucatorul principal.
     private Player player;
 
-    /// Haita de lupi din Nivelul 1 (4 lupi cu pathfinding individual).
-    private List<Enemy> wolves = new ArrayList<>();
-
-    /// Gardienii statici care pazesc intrarea gresita spre Nivelul 2.
-    /// Daca jucatorul ii ataca, aplica damage instant fatal si afiseaza WRONG ENTRANCE.
-    private List<Guardian> guardians = new ArrayList<>();
-
-    /// Flag setat true cand jucatorul a incercat sa atace un gardian.
-    private boolean wrongEntranceDeath = false;
+    /// Inamic specific nivelului 1.
+    private Enemy wolf;
 
     /// Inamic specific nivelului 2.
     private Skeleton skeleton;
@@ -98,6 +75,14 @@ public class Game implements Runnable {
 
     /// Arata daca jocul este in pauza.
     private boolean isPaused = false;
+
+    /*! \brief Retine daca jocul este in stare de lupta.
+
+    \details
+    Este folosit pentru a schimba soundtrack-ul doar o singura data
+    cand jucatorul intra sau iese din raza unui inamic.
+ */
+    private boolean inBattle = false;
 
     /// Optiunea curenta selectata in meniul de pauza.
     private int pauseMenuSelection = 0;
@@ -264,6 +249,92 @@ public class Game implements Runnable {
         }
     }
 
+    // =========================================================================
+// AUDIO
+// =========================================================================
+
+    /*! \fn private void updateLevelMusic()
+        \brief Porneste soundtrack-ul potrivit pentru nivelul curent.
+
+        \details
+        Aceasta metoda este apelata cand se incarca un nivel nou.
+        Muzica de battle nu este pornita aici, ci separat, in functie de apropierea
+        jucatorului de inamici.
+     */
+    private void updateLevelMusic() {
+        /// Cand incarcam un nivel nou, iesim automat din starea de lupta.
+        inBattle = false;
+
+        switch (currentLevel) {
+            case 1 -> AudioManager.getInstance().playMusic("res/audio/forest_theme.wav");
+            case 2 -> AudioManager.getInstance().playMusic("res/audio/dungeon_theme.wav");
+            case 3 -> AudioManager.getInstance().playMusic("res/audio/village_theme.wav");
+            case 4 -> AudioManager.getInstance().playMusic("res/audio/great_hall_theme.wav");
+            default -> AudioManager.getInstance().playMusic("res/audio/forest_theme.wav");
+        }
+    }
+
+    /*! \fn private boolean isEnemyCloseForBattle(Entity enemy, float radius)
+        \brief Verifica daca un inamic este suficient de aproape pentru a porni muzica de lupta.
+
+        \param enemy Inamicul verificat.
+        \param radius Raza de detectie pentru battle music.
+        \return true daca inamicul este viu si aproape de jucator.
+     */
+    private boolean isEnemyCloseForBattle(Entity enemy, float radius) {
+        if (player == null || enemy == null || enemy.isDead()) {
+            return false;
+        }
+
+        float dx = player.GetFeetCenterX() - enemy.GetFeetCenterX();
+        float dy = player.GetFeetBottomY() - enemy.GetFeetBottomY();
+
+        double distance = Math.sqrt(dx * dx + dy * dy);
+
+        /*
+         * Pornim muzica de battle fie daca inamicul este aproape,
+         * fie daca hitbox-urile se intersecteaza deja.
+         */
+        return distance <= radius || player.getFeetRect().intersects(enemy.getFeetRect());
+    }
+
+    /*! \fn private boolean shouldPlayBattleMusic()
+        \brief Verifica daca in nivelul curent exista un inamic activ aproape de jucator.
+
+        \return true daca trebuie pornita muzica de lupta.
+     */
+    private boolean shouldPlayBattleMusic() {
+        return isEnemyCloseForBattle(wolf, 220)
+                || isEnemyCloseForBattle(skeleton, 220)
+                || isEnemyCloseForBattle(spider, 220);
+    }
+
+    /*! \fn private void updateBattleMusic()
+        \brief Schimba muzica intre tema nivelului si tema de lupta.
+
+        \details
+        Daca jucatorul se apropie de un inamic, pornim battle_theme.
+        Cand nu mai exista inamic viu aproape, revenim la muzica nivelului curent.
+     */
+    private void updateBattleMusic() {
+        if (isDeathScreen || player == null || player.isDead()) {
+            inBattle = false;
+            return;
+        }
+
+        boolean shouldBeInBattle = shouldPlayBattleMusic();
+
+        if (shouldBeInBattle && !inBattle) {
+            inBattle = true;
+            AudioManager.getInstance().playMusic("res/audio/battle_theme.wav");
+        }
+
+        if (!shouldBeInBattle && inBattle) {
+            inBattle = false;
+            updateLevelMusic();
+        }
+    }
+
     /*! \fn public synchronized void StopGame()
         \brief Opreste jocul si asteapta terminarea thread-ului.
     */
@@ -346,17 +417,8 @@ public class Game implements Runnable {
         if (player != null && map != null) {
             player.Update(keyManager, map);
         }
-        /// Actualizam fiecare lup din haita independent.
-        for (Enemy wolf : wolves) {
-            if (!wolf.isDead() && map != null) {
-                wolf.Update(map);
-            }
-        }
-        /// Gardienii sunt statici dar tickuiesc timer-ele interne.
-        for (Guardian guardian : guardians) {
-            if (map != null) {
-                guardian.Update(map);
-            }
+        if (wolf != null && map != null) {
+            wolf.Update(map);
         }
         if (skeleton != null && map != null) {
             skeleton.Update(map);
@@ -379,6 +441,13 @@ public class Game implements Runnable {
         checkLevelTransition();
         if (player != null) {
             checkCombat();
+
+            /*
+             * Actualizam soundtrack-ul de battle dupa combat.
+             * Daca jucatorul este aproape de un inamic viu, pornim muzica de lupta.
+             * Daca se indeparteaza sau inamicul moare, revenim la tema nivelului.
+             */
+            updateBattleMusic();
         }
 
         lastUpState = keyManager.up;
@@ -403,19 +472,8 @@ public class Game implements Runnable {
 
         /// Atacul jucatorului loveste doar inamicii vii aflati in raza sabiei.
         if (playerAtk != null) {
-            /// Sabia jucatorului loveste fiecare lup din haita.
-            for (Enemy wolf : wolves) {
-                if (!wolf.isDead() && playerAtk.intersects(wolf.getFeetRect())) {
-                    wolf.takeDamage(Player.ATTACK_DAMAGE);
-                }
-            }
-            /// Daca jucatorul loveste un gardian — acesta aplica damage instant fatal
-            /// si seteaza flagul wrongEntranceDeath pentru ecranul de moarte special.
-            for (Guardian guardian : guardians) {
-                if (playerAtk.intersects(guardian.getFeetRect())) {
-                    wrongEntranceDeath = true;
-                    guardian.reactToPlayerAttack();
-                }
+            if (wolf != null && !wolf.isDead() && playerAtk.intersects(wolf.getFeetRect())) {
+                wolf.takeDamage(Player.ATTACK_DAMAGE);
             }
             if (skeleton != null && !skeleton.isDead() && playerAtk.intersects(skeleton.getFeetRect())) {
                 skeleton.takeDamage(Player.ATTACK_DAMAGE);
@@ -425,11 +483,9 @@ public class Game implements Runnable {
             }
         }
 
-        /// Damage de contact cu fiecare lup din haita.
-        for (Enemy wolf : wolves) {
-            if (!wolf.isDead() && playerFeet.intersects(wolf.getFeetRect())) {
-                player.takeDamage(Enemy.ATTACK_DAMAGE);
-            }
+        /// Damage de contact.
+        if (wolf != null && !wolf.isDead() && playerFeet.intersects(wolf.getFeetRect())) {
+            player.takeDamage(Enemy.ATTACK_DAMAGE);
         }
         if (skeleton != null && !skeleton.isDead() && playerFeet.intersects(skeleton.getFeetRect())) {
             player.takeDamage(Skeleton.ATTACK_DAMAGE);
@@ -467,6 +523,13 @@ public class Game implements Runnable {
         deathMenuSelection = 0;
         isDeathScreen = true;
         isPaused = false;
+
+        /*
+         * Oprim muzica de lupta/nivel cand jucatorul moare.
+         * Daca vrei mai tarziu, poti porni aici un game_over_theme.wav.
+         */
+        AudioManager.getInstance().stopMusic();
+        inBattle = false;
 
         if (keyManager != null) {
             keyManager.Clear();
@@ -511,7 +574,6 @@ public class Game implements Runnable {
     private void executeDeathMenuAction() {
         if (deathMenuSelection == 0) {
             isDeathScreen = false;
-            wrongEntranceDeath = false;
             player = new Player(0, 0);
             loadLevel(deathLevel);
 
@@ -523,6 +585,7 @@ public class Game implements Runnable {
             lastDownState = false;
             lastEnterState = false;
         } else {
+            AudioManager.getInstance().stopMusic();
             System.exit(0);
         }
     }
@@ -532,19 +595,29 @@ public class Game implements Runnable {
     // =========================================================================
 
     /*! \fn private void executePauseMenuAction()
-        \brief Executa actiunea selectata in meniul de pauza.
-    */
+    \brief Executa actiunea selectata in meniul de pauza.
+ */
     private void executePauseMenuAction() {
+        /// Feedback audio scurt pentru selectia din meniul de pauza.
+        AudioManager.getInstance().playSoundEffect("res/audio/button_click.wav");
+
         switch (pauseMenuSelection) {
             case 0 -> {
                 Window owner = SwingUtilities.getWindowAncestor(wnd.GetCanvas());
                 SwingUtilities.invokeLater(() -> SettingsDialog.showSettings(owner));
             }
+
             case 1 -> saveCurrentGame(true);
+
             case 2 -> returnToMainMenu();
-            case 3 -> System.exit(0);
+
+            case 3 -> {
+                AudioManager.getInstance().stopMusic();
+                System.exit(0);
+            }
         }
     }
+
 
     /*! \fn private void saveCurrentGame(boolean showMessage)
         \brief Salveaza progresul curent.
@@ -557,6 +630,8 @@ public class Game implements Runnable {
         }
 
         SaveManager.saveGame(currentLevel, player.GetX(), player.GetY());
+        /// Redam un efect sonor scurt pentru salvare.
+        AudioManager.getInstance().playSoundEffect("res/audio/save_theme.wav");
 
         if (showMessage) {
             SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
@@ -572,6 +647,11 @@ public class Game implements Runnable {
         \brief Cere revenirea in meniul principal si opreste jocul.
     */
     private void returnToMainMenu() {
+        /*
+         * Oprim muzica nivelului / battle inainte de revenirea la meniu.
+         * MenuWindow va porni din nou menu_theme.wav in constructor.
+         */
+        AudioManager.getInstance().stopMusic();
         returnToMenuRequested = true;
         runState = false;
     }
@@ -643,17 +723,9 @@ public class Game implements Runnable {
             map.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
 
-        /// 2. Inamicii — haita de lupi, gardieni, skeleton, spider.
-        for (Enemy wolf : wolves) {
-            if (!wolf.isDead() && camera != null) {
-                wolf.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-            }
-        }
-        /// Gardienii se deseneaza intotdeauna (sunt nemuritori).
-        for (Guardian guardian : guardians) {
-            if (camera != null) {
-                guardian.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-            }
+        /// 2. Inamicii.
+        if (wolf != null && camera != null) {
+            wolf.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
         if (skeleton != null && camera != null) {
             skeleton.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
@@ -674,8 +746,7 @@ public class Game implements Runnable {
 
         /// 5. Barele de viata ale inamicilor, desenate peste foreground.
         if (camera != null) {
-            /// Barele de viata ale lupilor din haita.
-            for (Enemy wolf : wolves) {
+            if (wolf != null) {
                 wolf.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
             }
             if (skeleton != null) {
@@ -785,23 +856,6 @@ public class Game implements Runnable {
         g2d.setColor(new Color(210, 35, 35));
         g2d.drawString(title, titleX, titleY);
 
-        /// Daca jucatorul a atacat gardienii, afisam mesaj special WRONG ENTRANCE.
-        if (wrongEntranceDeath) {
-            String wrongMsg = "WRONG ENTRANCE";
-            Font wrongFont = new Font("Serif", Font.BOLD, 36);
-            g2d.setFont(wrongFont);
-            FontMetrics wrongMetrics = g2d.getFontMetrics(wrongFont);
-            int wrongX = (LOGICALWIDTH - wrongMetrics.stringWidth(wrongMsg)) / 2;
-            int wrongY = titleY + 58;
-
-            /// Shadow subtil pentru lizibilitate.
-            g2d.setColor(new Color(80, 40, 0));
-            g2d.drawString(wrongMsg, wrongX + 2, wrongY + 2);
-            /// Text portocaliu — culoare diferita de rosu pentru a iesi in evidenta.
-            g2d.setColor(new Color(218, 130, 30));
-            g2d.drawString(wrongMsg, wrongX, wrongY);
-        }
-
         String[] options = {"TRY AGAIN", "EXIT GAME"};
         Font optionFont = new Font("Serif", Font.BOLD, 34);
         g2d.setFont(optionFont);
@@ -863,11 +917,9 @@ public class Game implements Runnable {
     */
     private void loadLevel(int level) {
         currentLevel = level;
-        wolves.clear();
-        guardians.clear();
+        wolf = null;
         skeleton = null;
         spider = null;
-        wrongEntranceDeath = false;
 
         if (player == null) {
             player = new Player(0, 0);
@@ -880,19 +932,7 @@ public class Game implements Runnable {
                     "res/maps/harta_primul_nivel.tmx"
             );
             setPlayerSpawn(10, 14);
-
-            // Haita de 4 lupi — pozitii verificate libere pe harta 24x18
-            wolves.clear();
-            wolves.add(new Enemy(5  * Tile.TILE_WIDTH,  5 * Tile.TILE_HEIGHT, player));
-            wolves.add(new Enemy(14 * Tile.TILE_WIDTH,  9 * Tile.TILE_HEIGHT, player));
-            wolves.add(new Enemy(8  * Tile.TILE_WIDTH, 12 * Tile.TILE_HEIGHT, player));
-            wolves.add(new Enemy(18 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player));
-
-            // 2 gardieni sub tranzitia spre dungeon (col 19-20, rand 2)
-            // Tranzitia reala e la randul 0-1, gardienii blocheaza accesul de sub ea
-            guardians.clear();
-            guardians.add(new Guardian(19 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, false));
-            guardians.add(new Guardian(20 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, true));
+            wolf = new Enemy(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
 
         } else if (level == 2) {
             map = new Map(
@@ -922,6 +962,13 @@ public class Game implements Runnable {
         }
 
         transitionCooldown = 30;
+
+        /*
+         * Dupa incarcarea nivelului, pornim muzica potrivita.
+         * Astfel, cand trecem Forest -> Dungeon -> Village -> Great Hall,
+         * soundtrack-ul se schimba automat.
+         */
+        updateLevelMusic();
     }
 
     /*! \fn private void checkLevelTransition()
@@ -959,4 +1006,6 @@ public class Game implements Runnable {
         }
     }
 }
+
+
 

@@ -27,10 +27,13 @@ import java.awt.image.BufferStrategy;
     - level1_foreground.png
     - level2_base.png
     - level2_foreground.png
+    - level3_village_base.png
+    - level3_village_foreground.png
     - level3_base.png
     - level3_foreground.png
     - harta_primul_nivel.tmx
     - harta_nivel2_dungeon.tmx
+    - harta_nivel3_village.tmx
     - harta_nivel3_the_great_hall.tmx
 */
 public class Game implements Runnable {
@@ -88,6 +91,15 @@ public class Game implements Runnable {
 
     /// Optiunea curenta selectata in meniul de pauza.
     private int pauseMenuSelection = 0;
+
+    /// Arata daca ecranul de moarte este activ.
+    private boolean isDeathScreen = false;
+
+    /// Optiunea curenta selectata in ecranul de moarte.
+    private int deathMenuSelection = 0;
+
+    /// Nivelul in care jucatorul a murit.
+    private int deathLevel = 1;
 
     /// Marcheaza revenirea in meniul principal dupa oprirea jocului.
     private volatile boolean returnToMenuRequested = false;
@@ -277,6 +289,11 @@ public class Game implements Runnable {
     private void Update() {
         keyManager.Update();
 
+        if (isDeathScreen) {
+            updateDeathScreen();
+            return;
+        }
+
         /// Comutare mod debug.
         if (keyManager.debug && !lastDebugState) {
             showHitboxes = !showHitboxes;
@@ -400,9 +417,80 @@ public class Game implements Runnable {
             }
         }
 
-        /// Daca jucatorul moare, reincarcam nivelul curent.
+        /// Daca jucatorul moare, afisam ecranul de retry.
         if (player.isDead()) {
-            loadLevel(currentLevel);
+            openDeathScreen();
+        }
+    }
+
+    // =========================================================================
+    // ECRAN DE MOARTE
+    // =========================================================================
+
+    /*! \fn private void openDeathScreen()
+        \brief Opreste gameplay-ul si afiseaza meniul de moarte.
+    */
+    private void openDeathScreen() {
+        deathLevel = currentLevel;
+        deathMenuSelection = 0;
+        isDeathScreen = true;
+        isPaused = false;
+
+        if (keyManager != null) {
+            keyManager.Clear();
+        }
+
+        lastUpState = false;
+        lastDownState = false;
+        lastEnterState = false;
+        lastEscapeState = false;
+    }
+
+    /*! \fn private void updateDeathScreen()
+        \brief Gestioneaza navigarea in meniul afisat dupa moarte.
+    */
+    private void updateDeathScreen() {
+        if (keyManager.up && !lastUpState) {
+            deathMenuSelection--;
+            if (deathMenuSelection < 0) {
+                deathMenuSelection = 1;
+            }
+        }
+
+        if (keyManager.down && !lastDownState) {
+            deathMenuSelection++;
+            if (deathMenuSelection > 1) {
+                deathMenuSelection = 0;
+            }
+        }
+
+        if (keyManager.enter && !lastEnterState) {
+            executeDeathMenuAction();
+        }
+
+        lastUpState = keyManager.up;
+        lastDownState = keyManager.down;
+        lastEnterState = keyManager.enter;
+    }
+
+    /*! \fn private void executeDeathMenuAction()
+        \brief Executa TRY AGAIN sau EXIT GAME.
+    */
+    private void executeDeathMenuAction() {
+        if (deathMenuSelection == 0) {
+            isDeathScreen = false;
+            player = new Player(0, 0);
+            loadLevel(deathLevel);
+
+            if (keyManager != null) {
+                keyManager.Clear();
+            }
+
+            lastUpState = false;
+            lastDownState = false;
+            lastEnterState = false;
+        } else {
+            System.exit(0);
         }
     }
 
@@ -626,10 +714,54 @@ public class Game implements Runnable {
             );
         }
 
+        if (isDeathScreen) {
+            drawDeathScreen(g2d);
+        }
+
         if (runState && wnd.GetCanvas().isDisplayable()) {
             bs.show();
         }
         g.dispose();
+    }
+
+    /*! \fn private void drawDeathScreen(Graphics2D g2d)
+        \brief Deseneaza fereastra neagra de moarte peste joc.
+    */
+    private void drawDeathScreen(Graphics2D g2d) {
+        g2d.setColor(Color.BLACK);
+        g2d.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
+
+        String title = "YOU DIED";
+        Font titleFont = new Font("Serif", Font.BOLD, 72);
+        g2d.setFont(titleFont);
+        FontMetrics titleMetrics = g2d.getFontMetrics(titleFont);
+        int titleX = (LOGICALWIDTH - titleMetrics.stringWidth(title)) / 2;
+        int titleY = 210;
+
+        g2d.setColor(new Color(120, 0, 0));
+        g2d.drawString(title, titleX + 3, titleY + 3);
+        g2d.setColor(new Color(210, 35, 35));
+        g2d.drawString(title, titleX, titleY);
+
+        String[] options = {"TRY AGAIN", "EXIT GAME"};
+        Font optionFont = new Font("Serif", Font.BOLD, 34);
+        g2d.setFont(optionFont);
+        FontMetrics optionMetrics = g2d.getFontMetrics(optionFont);
+        int startY = 330;
+
+        for (int i = 0; i < options.length; i++) {
+            String text = options[i];
+            if (i == deathMenuSelection) {
+                text = "> " + text + " <";
+                g2d.setColor(new Color(218, 165, 32));
+            } else {
+                g2d.setColor(new Color(170, 170, 180));
+            }
+
+            int x = (LOGICALWIDTH - optionMetrics.stringWidth(text)) / 2;
+            int y = startY + i * 66;
+            g2d.drawString(text, x, y);
+        }
     }
 
     // =========================================================================
@@ -695,11 +827,19 @@ public class Game implements Runnable {
                     "res/maps/level2_foreground.png",
                     "res/maps/harta_nivel2_dungeon.tmx"
             );
-            setPlayerSpawn(9, 13);
-            skeleton = new Skeleton(9 * Tile.TILE_WIDTH, 8 * Tile.TILE_HEIGHT, player);
-            spider = new Spider(9 * Tile.TILE_WIDTH, 13 * Tile.TILE_HEIGHT, player);
+            setPlayerSpawn(19, 24);
+            skeleton = new Skeleton(11 * Tile.TILE_WIDTH, 13 * Tile.TILE_HEIGHT, player);
+            spider = new Spider(29 * Tile.TILE_WIDTH, 19 * Tile.TILE_HEIGHT, player);
 
         } else if (level == 3) {
+            map = new Map(
+                    "res/maps/level3_village_base.png",
+                    "res/maps/level3_village_foreground.png",
+                    "res/maps/harta_nivel3_village.tmx"
+            );
+            setPlayerSpawn(24, 31);
+
+        } else if (level == 4) {
             map = new Map(
                     "res/maps/level3_base.png",
                     "res/maps/level3_foreground.png",
@@ -736,6 +876,14 @@ public class Game implements Runnable {
                 loadLevel(3);
                 saveCurrentGame(false);
             }
+        } else if (currentLevel == 3) {
+            if (map.isTransitionAtPixel(px, py)
+                    || map.isTransitionAtPixel(px - 8, py)
+                    || map.isTransitionAtPixel(px + 8, py)) {
+                loadLevel(4);
+                saveCurrentGame(false);
+            }
         }
     }
 }
+

@@ -159,8 +159,7 @@ public class MenuWindow extends JFrame {
             PlayerProfile activeProfile = ProfileManager.activeProfile;
 
             /// Verificam daca profilul activ are un joc salvat.
-            boolean hasSave = activeProfile != null
-                    && (activeProfile.getLevel() > 1 || activeProfile.getPlayerX() != 0);
+            boolean hasSave = activeProfile != null && SaveManager.hasSaveGame();
 
             if (!hasSave) {
                 /// Nu exista salvare — informam jucatorul si nu facem nimic altceva.

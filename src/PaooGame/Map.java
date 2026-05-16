@@ -33,8 +33,8 @@ public class Map {
     /// false = liber.
     private boolean[][] collisionData;
 
-    /// Matrice logica pentru tranzitia catre dungeon.
-    /// true = zona de trecere catre level 2.
+    /// Matrice logica pentru tranzitia catre urmatorul nivel.
+    /// true = zona de trecere.
     /// false = zona normala.
     private boolean[][] transitionData;
 
@@ -89,33 +89,63 @@ public class Map {
         return tile;
     }
 
+   
     /*! \fn public boolean isSolidAtPixel(float x, float y)
-        \brief Verifica daca punctul dat se afla pe o zona solida.
-     */
+    \brief Verifica daca punctul dat se afla pe o zona solida.
+
+    \details
+    Pentru hartile exportate din Tiled, logica vine din layer-ul Collisions.
+    Pentru hartile vechi, logica vine din proprietatea IsSolid() a tile-ului.
+ */
     public boolean isSolidAtPixel(float x, float y) {
         int col = (int)(x / Tile.TILE_WIDTH);
         int row = (int)(y / Tile.TILE_HEIGHT);
 
+        return isSolidAtTile(row, col);
+    }
+
+    /*! \fn public boolean isSolidAtTile(int row, int col)
+    \brief Verifica daca tile-ul de la pozitia (row, col) este solid.
+
+    \details
+    Aceasta metoda centralizeaza logica de coliziune:
+    - daca harta este exportata din Tiled, folosim matricea collisionData;
+    - daca harta este veche, folosim Tile.IsSolid().
+ */
+    public boolean isSolidAtTile(int row, int col) {
+        /// Daca iesim in afara hartii, tratam zona ca fiind solida.
+        if (row < 0 || row >= rows || col < 0 || col >= cols) {
+            return true;
+        }
+
         /*
-         * Pentru harta noua din Tiled folosim layer-ul Collisions.
+         * Pentru hartile noi exportate din Tiled:
+         * orice celula nenula din layer-ul Collisions este considerata solida.
          */
         if (useVisualMap) {
-            if (row < 0 || row >= rows || col < 0 || col >= cols) {
-                return true;
-            }
-
             return collisionData != null && collisionData[row][col];
         }
 
         /*
-         * Pentru hartile vechi folosim logica veche:
-         * Tile.IsSolid().
+         * Pentru hartile vechi bazate pe matrice text:
+         * folosim proprietatea IsSolid() a tile-ului.
          */
         return getTile(row, col).IsSolid();
     }
 
+
+    public boolean isSolidRectAtPixel(float left, float top, float width, float height) {
+        float right  = left + width  - 1;
+        float bottom = top  + height - 1;
+
+        return isSolidAtPixel(left,  top)
+                || isSolidAtPixel(right, top)
+                || isSolidAtPixel(left,  bottom)
+                || isSolidAtPixel(right, bottom);
+    }  
+
     /*! \fn public boolean isTransitionAtPixel(float x, float y)
-        \brief Verifica daca punctul dat se afla pe zona de tranzitie catre dungeon.
+        \brief Verifica daca punctul dat se afla pe o zona de tranzitie.
      */
     public boolean isTransitionAtPixel(float x, float y) {
         if (!useVisualMap || transitionData == null) {
@@ -157,7 +187,7 @@ public class Map {
     }
 
     /*! \fn private void loadLogicFromTmx(String tmxPath)
-        \brief Citeste din fisierul .tmx layer-ele Collisions si TransitionToDungeon.
+        \brief Citeste din fisierul .tmx layer-ele Collisions si tranzitiile.
      */
     private void loadLogicFromTmx(String tmxPath) {
         try {
@@ -188,6 +218,7 @@ public class Map {
 
                 if (layerName.equals("TransitionToDungeon")
                         || layerName.equals("TransitionToGreatHall")
+                        || layerName.equals("TransitionToVillage")
                         || layerName.equals("Transitions")) {
                     transitionData = readBooleanLayer(layer);
                 }
@@ -326,7 +357,7 @@ public class Map {
 
             /*
              * DEBUG:
-             * Zona de trecere spre dungeon este mov.
+             * Zona de trecere spre urmatorul nivel este mov.
              */
             if (Game.showHitboxes && transitionData != null) {
                 for (int row = 0; row < rows; row++) {
@@ -377,3 +408,4 @@ public class Map {
         }
     }
 }
+

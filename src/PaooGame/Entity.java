@@ -149,24 +149,31 @@ public abstract class Entity {
     //  COLIZIUNI CU HARTA
     // =========================================================================
 
+    
     /*! \fn protected boolean CanMoveTo(float testX, float testY, Map map)
-        \brief Verifica daca entitatea se poate deplasa la coordonatele specificate.
-        \return true daca miscarea este valida (fara coliziuni), false altfel.
-     */
+    \brief Verifica daca entitatea se poate deplasa la coordonatele specificate.
+
+    \details
+    Se verifica doar hitbox-ul de la picioare, nu tot sprite-ul.
+    Asta este important pentru perspectiva top-down / three-quarters:
+    vizual personajul este mai inalt, dar fizic doar baza lui trebuie sa loveasca peretii.
+
+    \return true daca miscarea este valida, false daca exista coliziune.
+ */
     protected boolean CanMoveTo(float testX, float testY, Map map) {
         float left   = testX + feetOffsetX;
-        float right  = testX + feetOffsetX + feetWidth  - 1;
         float top    = testY + feetOffsetY;
-        float bottom = testY + feetOffsetY + feetHeight - 1;
+        float right  = left + feetWidth  - 1;
+        float bottom = top  + feetHeight - 1;
 
-        if (left < 0 || top < 0 || right >= map.getPixelWidth() || bottom >= map.getPixelHeight())
+        /// Nu permitem iesirea in afara hartii.
+        if (left < 0 || top < 0 || right >= map.getPixelWidth() || bottom >= map.getPixelHeight()) {
             return false;
+        }
 
-        return !map.isSolidAtPixel(left,  top)    &&
-               !map.isSolidAtPixel(right, top)    &&
-               !map.isSolidAtPixel(left,  bottom) &&
-               !map.isSolidAtPixel(right, bottom);
-    }
+        /// Verificam dreptunghiul fizic al picioarelor in layer-ul Collisions.
+        return !map.isSolidRectAtPixel(left, top, feetWidth, feetHeight);
+    }           
 
     // =========================================================================
     //  GETTERI GENERALI

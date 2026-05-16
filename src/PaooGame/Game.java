@@ -1,8 +1,11 @@
 package PaooGame;
 
 import PaooGame.enemies.Enemy;
+import PaooGame.enemies.Guardian;
 import PaooGame.enemies.Skeleton;
 import PaooGame.enemies.Spider;
+import java.util.ArrayList;
+import java.util.List;
 import PaooGame.GameWindow.GameWindow;
 import PaooGame.Graphics.Assets;
 import PaooGame.Tiles.Tile;
@@ -62,8 +65,15 @@ public class Game implements Runnable {
     /// Jucatorul principal.
     private Player player;
 
-    /// Inamic specific nivelului 1.
-    private Enemy wolf;
+    /// Haita de lupi din Nivelul 1 (4 lupi cu pathfinding individual).
+    private List<Enemy> wolves = new ArrayList<>();
+
+    /// Gardienii statici care pazesc intrarea gresita spre Nivelul 2.
+    /// Daca jucatorul ii ataca, aplica damage instant fatal si afiseaza WRONG ENTRANCE.
+    private List<Guardian> guardians = new ArrayList<>();
+
+    /// Flag setat true cand jucatorul a incercat sa atace un gardian.
+    private boolean wrongEntranceDeath = false;
 
     /// Inamic specific nivelului 2.
     private Skeleton skeleton;
@@ -336,8 +346,17 @@ public class Game implements Runnable {
         if (player != null && map != null) {
             player.Update(keyManager, map);
         }
-        if (wolf != null && map != null) {
-            wolf.Update(map);
+        /// Actualizam fiecare lup din haita independent.
+        for (Enemy wolf : wolves) {
+            if (!wolf.isDead() && map != null) {
+                wolf.Update(map);
+            }
+        }
+        /// Gardienii sunt statici dar tickuiesc timer-ele interne.
+        for (Guardian guardian : guardians) {
+            if (map != null) {
+                guardian.Update(map);
+            }
         }
         if (skeleton != null && map != null) {
             skeleton.Update(map);
@@ -384,8 +403,19 @@ public class Game implements Runnable {
 
         /// Atacul jucatorului loveste doar inamicii vii aflati in raza sabiei.
         if (playerAtk != null) {
-            if (wolf != null && !wolf.isDead() && playerAtk.intersects(wolf.getFeetRect())) {
-                wolf.takeDamage(Player.ATTACK_DAMAGE);
+            /// Sabia jucatorului loveste fiecare lup din haita.
+            for (Enemy wolf : wolves) {
+                if (!wolf.isDead() && playerAtk.intersects(wolf.getFeetRect())) {
+                    wolf.takeDamage(Player.ATTACK_DAMAGE);
+                }
+            }
+            /// Daca jucatorul loveste un gardian — acesta aplica damage instant fatal
+            /// si seteaza flagul wrongEntranceDeath pentru ecranul de moarte special.
+            for (Guardian guardian : guardians) {
+                if (playerAtk.intersects(guardian.getFeetRect())) {
+                    wrongEntranceDeath = true;
+                    guardian.reactToPlayerAttack();
+                }
             }
             if (skeleton != null && !skeleton.isDead() && playerAtk.intersects(skeleton.getFeetRect())) {
                 skeleton.takeDamage(Player.ATTACK_DAMAGE);
@@ -395,9 +425,11 @@ public class Game implements Runnable {
             }
         }
 
-        /// Damage de contact.
-        if (wolf != null && !wolf.isDead() && playerFeet.intersects(wolf.getFeetRect())) {
-            player.takeDamage(Enemy.ATTACK_DAMAGE);
+        /// Damage de contact cu fiecare lup din haita.
+        for (Enemy wolf : wolves) {
+            if (!wolf.isDead() && playerFeet.intersects(wolf.getFeetRect())) {
+                player.takeDamage(Enemy.ATTACK_DAMAGE);
+            }
         }
         if (skeleton != null && !skeleton.isDead() && playerFeet.intersects(skeleton.getFeetRect())) {
             player.takeDamage(Skeleton.ATTACK_DAMAGE);
@@ -479,6 +511,7 @@ public class Game implements Runnable {
     private void executeDeathMenuAction() {
         if (deathMenuSelection == 0) {
             isDeathScreen = false;
+            wrongEntranceDeath = false;
             player = new Player(0, 0);
             loadLevel(deathLevel);
 
@@ -610,9 +643,17 @@ public class Game implements Runnable {
             map.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
 
-        /// 2. Inamicii.
-        if (wolf != null && camera != null) {
-            wolf.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        /// 2. Inamicii — haita de lupi, gardieni, skeleton, spider.
+        for (Enemy wolf : wolves) {
+            if (!wolf.isDead() && camera != null) {
+                wolf.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            }
+        }
+        /// Gardienii se deseneaza intotdeauna (sunt nemuritori).
+        for (Guardian guardian : guardians) {
+            if (camera != null) {
+                guardian.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            }
         }
         if (skeleton != null && camera != null) {
             skeleton.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
@@ -633,7 +674,8 @@ public class Game implements Runnable {
 
         /// 5. Barele de viata ale inamicilor, desenate peste foreground.
         if (camera != null) {
-            if (wolf != null) {
+            /// Barele de viata ale lupilor din haita.
+            for (Enemy wolf : wolves) {
                 wolf.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
             }
             if (skeleton != null) {
@@ -743,6 +785,23 @@ public class Game implements Runnable {
         g2d.setColor(new Color(210, 35, 35));
         g2d.drawString(title, titleX, titleY);
 
+        /// Daca jucatorul a atacat gardienii, afisam mesaj special WRONG ENTRANCE.
+        if (wrongEntranceDeath) {
+            String wrongMsg = "WRONG ENTRANCE";
+            Font wrongFont = new Font("Serif", Font.BOLD, 36);
+            g2d.setFont(wrongFont);
+            FontMetrics wrongMetrics = g2d.getFontMetrics(wrongFont);
+            int wrongX = (LOGICALWIDTH - wrongMetrics.stringWidth(wrongMsg)) / 2;
+            int wrongY = titleY + 58;
+
+            /// Shadow subtil pentru lizibilitate.
+            g2d.setColor(new Color(80, 40, 0));
+            g2d.drawString(wrongMsg, wrongX + 2, wrongY + 2);
+            /// Text portocaliu — culoare diferita de rosu pentru a iesi in evidenta.
+            g2d.setColor(new Color(218, 130, 30));
+            g2d.drawString(wrongMsg, wrongX, wrongY);
+        }
+
         String[] options = {"TRY AGAIN", "EXIT GAME"};
         Font optionFont = new Font("Serif", Font.BOLD, 34);
         g2d.setFont(optionFont);
@@ -804,9 +863,11 @@ public class Game implements Runnable {
     */
     private void loadLevel(int level) {
         currentLevel = level;
-        wolf = null;
+        wolves.clear();
+        guardians.clear();
         skeleton = null;
         spider = null;
+        wrongEntranceDeath = false;
 
         if (player == null) {
             player = new Player(0, 0);
@@ -819,7 +880,19 @@ public class Game implements Runnable {
                     "res/maps/harta_primul_nivel.tmx"
             );
             setPlayerSpawn(10, 14);
-            wolf = new Enemy(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
+
+            // Haita de 4 lupi — pozitii verificate libere pe harta 24x18
+            wolves.clear();
+            wolves.add(new Enemy(5  * Tile.TILE_WIDTH,  5 * Tile.TILE_HEIGHT, player));
+            wolves.add(new Enemy(14 * Tile.TILE_WIDTH,  9 * Tile.TILE_HEIGHT, player));
+            wolves.add(new Enemy(8  * Tile.TILE_WIDTH, 12 * Tile.TILE_HEIGHT, player));
+            wolves.add(new Enemy(18 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player));
+
+            // 2 gardieni sub tranzitia spre dungeon (col 19-20, rand 2)
+            // Tranzitia reala e la randul 0-1, gardienii blocheaza accesul de sub ea
+            guardians.clear();
+            guardians.add(new Guardian(19 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, false));
+            guardians.add(new Guardian(20 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, true));
 
         } else if (level == 2) {
             map = new Map(

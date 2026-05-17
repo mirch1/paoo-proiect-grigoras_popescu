@@ -28,6 +28,7 @@ public class Enemy extends Entity {
     private boolean isAttacking = false;
     private boolean facingRight = true;
 
+
     /// Timer pentru animatia de atac — evita spam-ul vizual.
     private int attackAnimTimer = 0;
 

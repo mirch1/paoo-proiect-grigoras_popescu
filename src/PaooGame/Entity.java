@@ -35,6 +35,10 @@ public abstract class Entity {
     /// Contor descrescator pentru invincibilitate.
     private int invincibilityTimer = 0;
 
+    /// Marcheaza daca scorul pentru aceasta entitate a fost deja acordat jucatorului.
+    /// Previne dublarea punctelor la o singura eliminare.
+    protected boolean scoreAwarded = false;
+
     /*! \fn public Entity(float x, float y, int width, int height)
         \brief Constructor de initializare.
      */
@@ -201,5 +205,19 @@ public abstract class Entity {
     public float GetFeetCenterX() { return x + feetOffsetX + feetWidth  / 2.0f; }
     public float GetFeetCenterY() { return y + feetOffsetY + feetHeight / 2.0f; }
     public float GetFeetBottomY() { return y + feetOffsetY + feetHeight - 1;    }
+
+    /*! \fn public boolean isScoreAwarded()
+    \brief Returneaza daca scorul a fost deja acordat pentru eliminarea acestei entitati.
+    \return true daca scorul a fost deja contorizat.
+ */
+    public boolean isScoreAwarded() { return scoreAwarded; }
+
+    /*! \fn public void setScoreAwarded(boolean v)
+        \brief Marcheaza scorul ca acordat pentru a evita dublarea punctelor.
+        \param v Valoarea de setat.
+     */
+    public void setScoreAwarded(boolean v) { this.scoreAwarded = v; }
+
+
 }
 

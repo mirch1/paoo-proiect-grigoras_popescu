@@ -120,6 +120,11 @@ public class Game implements Runnable {
     private boolean lastEnterState  = false;
     private boolean lastDebugState  = false;
 
+    /*! \brief Starea anterioara a tastei SPACE.
+        \details Folosita pentru edge detection in dialogBox (apasare unica).
+    */
+    private boolean lastSpaceState = false;
+
     /// Daca este true, jocul incearca sa incarce progresul salvat la initializare.
     private boolean loadSavedGame = false;
 
@@ -128,6 +133,18 @@ public class Game implements Runnable {
 
     /// Scorul acumulat in sesiunea curenta de joc.
     private int score = 0;
+
+    /*! \brief Caseta de dialog pentru naratiunea jocului.
+        \details Afiseaza texte la intrarea in niveluri sau la evenimente speciale.
+                 Jocul este pauzat cat timp dialogul este activ.
+    */
+    private DialogBox dialogBox = new DialogBox();
+
+    /*! \brief Retine daca dialogul de introducere al fiecarui nivel a fost afisat.
+        \details Index 1 = nivel 1, 2 = nivel 2, 3 = nivel 3, 4 = nivel 4.
+                 Previne reafisarea aceluiasi dialog la reintrarea in nivel (ex. TRY AGAIN).
+    */
+    private boolean[] levelDialogShown = new boolean[5];
 
     // =========================================================================
     //  CONSTRUCTORI
@@ -207,6 +224,15 @@ public class Game implements Runnable {
                 if (camera != null && map != null && player != null) {
                     camera.CenterOnPlayer(player, map);
                 }
+
+                /*
+                 * La Load Game, marcam dialogul nivelului incarcat ca deja afisat,
+                 * pentru a nu-l afisa din nou la continuarea sesiunii salvate.
+                 */
+                if (savedGameState.getLevel() >= 1 && savedGameState.getLevel() <= 4) {
+                    levelDialogShown[savedGameState.getLevel()] = true;
+                }
+
             } else {
                 /// Save-ul nu a putut fi citit — pornim un joc nou de la nivelul 1.
                 currentLevel = 1;
@@ -431,14 +457,32 @@ public class Game implements Runnable {
         \brief Actualizeaza starea jocului pentru un frame.
 
         \details
-        Trateaza inputul, meniul de pauza, miscarea entitatilor,
+        Trateaza inputul, dialogul narativ, meniul de pauza, miscarea entitatilor,
         combat-ul, camera si tranzitiile intre niveluri.
+
+        Ordinea de prioritate:
+        1. Death screen (cel mai prioritar — blocheaza tot)
+        2. DialogBox activ (blocheaza update-ul jocului, doar SPACE e procesat)
+        3. Meniu pauza (blocheaza update entitatile)
+        4. Update normal al jocului
     */
     private void Update() {
         keyManager.Update();
 
+        /// 1. Ecranul de moarte are prioritate maxima.
         if (isDeathScreen) {
             updateDeathScreen();
+            return;
+        }
+
+        /// 2. Cat timp un dialog narativ este activ, jocul este pauzat.
+        ///    Doar tasta SPACE este procesata pentru a avansa/inchide dialogul.
+        if (dialogBox.isActive()) {
+            boolean currentSpaceState = keyManager.space;
+            if (currentSpaceState && !lastSpaceState) {
+                dialogBox.hide();
+            }
+            lastSpaceState = currentSpaceState;
             return;
         }
 
@@ -510,6 +554,59 @@ public class Game implements Runnable {
         lastUpState    = keyManager.up;
         lastDownState  = keyManager.down;
         lastEnterState = keyManager.enter;
+    }
+
+    // =========================================================================
+    //  DIALOG NARATIV
+    // =========================================================================
+
+    /*! \fn private void showLevelDialog(int level)
+        \brief Afiseaza dialogul narativ de introducere pentru nivelul specificat.
+
+        \details
+        Dialogul este afisat o singura data per sesiune de joc pentru fiecare nivel.
+        La Load Game, nivelul restaurat isi marcheaza automat dialogul ca afisat,
+        astfel incat sa nu deranjeze jucatorul care continua o sesiune salvata.
+        Jocul este pauzat automat cat timp dialogul este activ (tratat in Update()).
+
+        \param level Nivelul pentru care se afiseaza dialogul (1-4).
+    */
+    private void showLevelDialog(int level) {
+        if (level < 1 || level > 4) return;
+        if (levelDialogShown[level]) return;
+
+        levelDialogShown[level] = true;
+
+        switch (level) {
+            case 1 -> dialogBox.show(
+                "Chapter I  —  The Cursed Forest",
+                "The kingdom of Aethelgard has fallen into darkness.",
+                "You are its last loyal knight. The key to the ruins awaits.",
+                "Beware — the forest is not as empty as it seems.",
+                "[ SPACE ]  Continue"
+            );
+            case 2 -> dialogBox.show(
+                "Chapter II  —  Beneath the Castle",
+                "The dungeon holds secrets older than the kingdom itself.",
+                "A spirit guardian blocks the path forward.",
+                "Find the artifact that opens the Great Hall.",
+                "[ SPACE ]  Continue"
+            );
+            case 3 -> dialogBox.show(
+                "Chapter III  —  The Cursed Village",
+                "The village surrounding the castle has been corrupted.",
+                "Shadows stir between the houses. Trust no one.",
+                "The gates to the Great Hall lie ahead.",
+                "[ SPACE ]  Continue"
+            );
+            case 4 -> dialogBox.show(
+                "Chapter IV  —  The Great Hall",
+                "This is where it ends.",
+                "The fallen crown lies beyond the royal guards.",
+                "For Aethelgard. Reclaim what was lost.",
+                "[ SPACE ]  Continue"
+            );
+        }
     }
 
     // =========================================================================
@@ -635,6 +732,7 @@ public class Game implements Runnable {
         lastDownState   = false;
         lastEnterState  = false;
         lastEscapeState = false;
+        lastSpaceState  = false;
     }
 
     /*! \fn private void updateDeathScreen()
@@ -676,6 +774,7 @@ public class Game implements Runnable {
           FIX: score = 0 este acum AICI, nu in updateDeathScreen() unde
           era executat la fiecare frame, corupand scorul inainte de orice save.
         - Reinitializeaza jucatorul si reincarca nivelul in care a murit.
+        - Reseteaza flagul de dialog al nivelului pentru a reafisa introducerea.
 
         EXIT GAME (deathMenuSelection == 1):
         - Opreste muzica, inchide conexiunea DB corect, iese din aplicatie.
@@ -685,6 +784,16 @@ public class Game implements Runnable {
             /// TRY AGAIN — resetam scorul: noua sesiune incepe de la 0.
             score = 0;
             isDeathScreen = false;
+
+            /*
+             * Resetam dialogul nivelului pentru ca jucatorul sa il revada
+             * la TRY AGAIN — face experienta mai imersiva la retry.
+             * Comenteaza linia de mai jos daca preferi sa NU se reafiseze.
+             */
+            if (deathLevel >= 1 && deathLevel <= 4) {
+                levelDialogShown[deathLevel] = false;
+            }
+
             player = new Player(0, 0);
             loadLevel(deathLevel);
             if (keyManager != null) {
@@ -692,6 +801,7 @@ public class Game implements Runnable {
                 lastUpState    = false;
                 lastDownState  = false;
                 lastEnterState = false;
+                lastSpaceState = false;
             }
         } else {
             /// EXIT GAME — oprim muzica, inchidem DB corect, iesim.
@@ -910,10 +1020,11 @@ public class Game implements Runnable {
         6. meniul de pauza,
         7. overlay-ul de debug,
         8. HUD-ul jucatorului (scor + bara HP),
-        9. ecranul de moarte (daca e activ).
+        9. ecranul de moarte (daca e activ),
+        10. dialogul narativ (ultimul — mereu deasupra tuturor).
 
-        HUD-ul este desenat ultimul pentru a ramane mereu deasupra copacilor
-        si elementelor de foreground.
+        HUD-ul si dialogul sunt desenate ultimele pentru a ramane
+        mereu vizibile deasupra hartii si elementelor de foreground.
     */
     private void Draw() {
         if (wnd == null || wnd.GetCanvas() == null || !wnd.GetCanvas().isDisplayable()) return;
@@ -1068,6 +1179,9 @@ public class Game implements Runnable {
             g2d.drawString(scoreText, (LOGICALWIDTH - sm.stringWidth(scoreText)) / 2, 285);
         }
 
+        /// 10. Dialogul narativ — desenat ultimul, mereu deasupra tuturor elementelor.
+        dialogBox.draw(g2d, LOGICALWIDTH, LOGICALHEIGHT);
+
         if (runState && wnd.GetCanvas().isDisplayable()) bs.show();
         g.dispose();
     }
@@ -1154,6 +1268,7 @@ public class Game implements Runnable {
         \details
         Reinitializeaza toti inamicii si NPC-urile pentru nivelul nou.
         Porneste muzica potrivita prin updateLevelMusic().
+        Afiseaza dialogul narativ de introducere al nivelului (o singura data per sesiune).
         Scorul NU este resetat aici — resetul se face exclusiv in
         executeDeathMenuAction() la TRY AGAIN.
 
@@ -1227,6 +1342,13 @@ public class Game implements Runnable {
          * Forest -> Dungeon -> Village -> Great Hall: soundtrack-ul se schimba automat.
          */
         updateLevelMusic();
+
+        /*
+         * Afisam dialogul narativ de introducere al nivelului.
+         * showLevelDialog() verifica intern daca dialogul a mai fost afisat
+         * in aceasta sesiune si il ignora daca da.
+         */
+        showLevelDialog(level);
     }
 
     /*! \fn private boolean isBadEntranceAttempt()

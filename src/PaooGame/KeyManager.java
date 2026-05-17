@@ -21,20 +21,24 @@ public class KeyManager implements KeyListener {
 
     public boolean attack;   /*!< Flag pentru tasta SPACE (Atac Knight).*/
 
+    public boolean space;    /*!< Flag pentru tasta SPACE (Inchidere dialog narativ).*/
+
     /*! \fn public void Update()
         \brief Actualizeaza flagurile de control pe baza starii vectorului de taste.
      */
     public void Update() {
-        up = isPressed(KeyEvent.VK_W) || isPressed(KeyEvent.VK_UP);
-        down = isPressed(KeyEvent.VK_S) || isPressed(KeyEvent.VK_DOWN);
-        left = isPressed(KeyEvent.VK_A) || isPressed(KeyEvent.VK_LEFT);
+        up    = isPressed(KeyEvent.VK_W) || isPressed(KeyEvent.VK_UP);
+        down  = isPressed(KeyEvent.VK_S) || isPressed(KeyEvent.VK_DOWN);
+        left  = isPressed(KeyEvent.VK_A) || isPressed(KeyEvent.VK_LEFT);
         right = isPressed(KeyEvent.VK_D) || isPressed(KeyEvent.VK_RIGHT);
 
         escape = isPressed(KeyEvent.VK_ESCAPE);
-        enter = isPressed(KeyEvent.VK_ENTER);
-        debug = isPressed(KeyEvent.VK_H);
+        enter  = isPressed(KeyEvent.VK_ENTER);
+        debug  = isPressed(KeyEvent.VK_H);
 
-        attack = isPressed(KeyEvent.VK_SPACE);  /*!< Tasta folosita pentru atacul cavalerului. */
+        /// SPACE este folosit atat pentru atac cat si pentru dialog.
+        attack = isPressed(KeyEvent.VK_SPACE);
+        space  = isPressed(KeyEvent.VK_SPACE);
     }
 
     /*! \fn private boolean isPressed(int keyCode)
@@ -45,50 +49,53 @@ public class KeyManager implements KeyListener {
     }
 
     /*! \fn public void Clear()
-        \brief Reseteaza toate tastele memorate ca fiind apasate (util dupa schimbare nivel / revenire in meniu).
+        \brief Reseteaza toate tastele memorate ca fiind apasate.
      */
     public void Clear() {
-        /*
-         * Resetează toate tastele memorate ca fiind apăsate.
-         *
-         * Este utilă mai ales la:
-         * - schimbarea nivelului;
-         * - revenirea în meniu;
-         * - resetarea inputului după pauză.
-         */
-
-        /// Parcurgem vectorul de taste și punem fiecare poziție pe false.
         for (int i = 0; i < keys.length; i++) {
             keys[i] = false;
         }
 
-        /// Resetăm flag-urile pentru deplasare.
-        up = false;
-        down = false;
-        left = false;
+        up    = false;
+        down  = false;
+        left  = false;
         right = false;
 
-        /// Resetăm flag-urile pentru acțiuni speciale.
         escape = false;
-        enter = false;
-        debug = false;
+        enter  = false;
+        debug  = false;
         attack = false;
+        space  = false; /// FIX: space resetat la Clear()
     }
 
     @Override
     public void keyPressed(KeyEvent e) {
-        int code = e.getKeyCode();
-        if (code >= 0 && code < keys.length) {
-            keys[code] = true;
-        }
+        int keyCode = e.getKeyCode();
+        if (keyCode >= 0 && keyCode < keys.length) keys[keyCode] = true;
+
+        if (keyCode == KeyEvent.VK_W)      up     = true;
+        if (keyCode == KeyEvent.VK_S)      down   = true;
+        if (keyCode == KeyEvent.VK_A)      left   = true;
+        if (keyCode == KeyEvent.VK_D)      right  = true;
+        if (keyCode == KeyEvent.VK_ESCAPE) escape = true;
+        if (keyCode == KeyEvent.VK_ENTER)  enter  = true;
+        if (keyCode == KeyEvent.VK_SPACE)  { attack = true; space = true; }
+        if (keyCode == KeyEvent.VK_H)      debug  = true;
     }
 
     @Override
     public void keyReleased(KeyEvent e) {
-        int code = e.getKeyCode();
-        if (code >= 0 && code < keys.length) {
-            keys[code] = false;
-        }
+        int keyCode = e.getKeyCode();
+        if (keyCode >= 0 && keyCode < keys.length) keys[keyCode] = false;
+
+        if (keyCode == KeyEvent.VK_W)      up     = false;
+        if (keyCode == KeyEvent.VK_S)      down   = false;
+        if (keyCode == KeyEvent.VK_A)      left   = false;
+        if (keyCode == KeyEvent.VK_D)      right  = false;
+        if (keyCode == KeyEvent.VK_ESCAPE) escape = false;
+        if (keyCode == KeyEvent.VK_ENTER)  enter  = false;
+        if (keyCode == KeyEvent.VK_SPACE)  { attack = false; space = false; }
+        if (keyCode == KeyEvent.VK_H)      debug  = false;
     }
 
     @Override

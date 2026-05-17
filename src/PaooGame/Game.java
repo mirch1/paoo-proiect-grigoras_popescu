@@ -178,6 +178,12 @@ public class Game implements Runnable {
                 if (player != null) {
                     player.setPosition(savedGameState.getPlayerX(), savedGameState.getPlayerY());
                 }
+                /*
+                 * Dupa ce nivelul a fost incarcat si inamicii au fost creati,
+                 * restauram starea inamicilor invinsi din salvare.
+                 */
+                applyDefeatedEnemies(savedGameState);
+
                 if (camera != null && map != null && player != null) {
                     camera.CenterOnPlayer(player, map);
                 }
@@ -320,11 +326,11 @@ public class Game implements Runnable {
             return true;
         }
 
-    /*
-     * In Great Hall, cavalerii/gardienii sunt tinuti in lista npcs,
-     * nu in variabilele wolf/skeleton/spider.
-     * De aceea trebuie verificati separat pentru battle music.
-     */
+        /*
+         * In Great Hall, cavalerii/gardienii sunt tinuti in lista npcs,
+         * nu in variabilele wolf/skeleton/spider.
+         * De aceea trebuie verificati separat pentru battle music.
+         */
         for (NPC npc : npcs) {
             if (npc != null && npc.isGuardActive() && isEnemyCloseForBattle(npc, 220)) {
                 return true;
@@ -333,7 +339,6 @@ public class Game implements Runnable {
 
         return false;
     }
-
 
     /*! \fn private void updateBattleMusic()
         \brief Schimba muzica intre tema nivelului si tema de lupta.
@@ -689,6 +694,96 @@ public class Game implements Runnable {
         }
     }
 
+    /*! \fn private void appendDefeatedId(StringBuilder builder, String id)
+    \brief Adauga un ID de inamic invins in lista salvata.
+
+    \param builder StringBuilder-ul in care se construieste lista.
+    \param id ID-ul inamicului invins.
+ */
+    private void appendDefeatedId(StringBuilder builder, String id) {
+        if (builder.length() > 0) {
+            builder.append(",");
+        }
+
+        builder.append(id);
+    }
+
+    /*! \fn private String getDefeatedEnemiesForSave()
+        \brief Construieste lista inamicilor invinsi din nivelul curent.
+
+        \details
+        Lista este salvata in fisierul .properties.
+        Exemple:
+        - wolf
+        - skeleton
+        - spider
+        - npc0, npc1 pentru gardienii regali din Great Hall.
+
+        \return Lista de ID-uri separate prin virgula.
+     */
+    private String getDefeatedEnemiesForSave() {
+        StringBuilder defeated = new StringBuilder();
+
+        if (wolf != null && wolf.isDead()) {
+            appendDefeatedId(defeated, "wolf");
+        }
+
+        if (skeleton != null && skeleton.isDead()) {
+            appendDefeatedId(defeated, "skeleton");
+        }
+
+        if (spider != null && spider.isDead()) {
+            appendDefeatedId(defeated, "spider");
+        }
+
+        /*
+         * NPC-urile sunt salvate dupa pozitia lor in lista.
+         * In Great Hall, npc0, npc1, npc2, npc3 sunt cavalerii/gardienii regali.
+         */
+        for (int i = 0; i < npcs.size(); i++) {
+            NPC npc = npcs.get(i);
+
+            if (npc != null && npc.isDefeated()) {
+                appendDefeatedId(defeated, "npc" + i);
+            }
+        }
+
+        return defeated.toString();
+    }
+
+    /*! \fn private void applyDefeatedEnemies(SaveGameState state)
+        \brief Restaureaza starea inamicilor invinsi dupa Load Game.
+
+        \details
+        Dupa incarcarea nivelului, inamicii sunt creati din nou.
+        Aceasta metoda ii marcheaza drept morti/invinsi pe cei care existau
+        in lista salvata.
+     */
+    private void applyDefeatedEnemies(SaveGameState state) {
+        if (state == null) {
+            return;
+        }
+
+        if (wolf != null && state.isEnemyDefeated("wolf")) {
+            wolf.forceDead();
+        }
+
+        if (skeleton != null && state.isEnemyDefeated("skeleton")) {
+            skeleton.forceDead();
+        }
+
+        if (spider != null && state.isEnemyDefeated("spider")) {
+            spider.forceDead();
+        }
+
+        for (int i = 0; i < npcs.size(); i++) {
+            NPC npc = npcs.get(i);
+
+            if (npc != null && state.isEnemyDefeated("npc" + i)) {
+                npc.forceDefeatedState();
+            }
+        }
+    }
 
     /*! \fn private void saveCurrentGame(boolean showMessage)
         \brief Salveaza progresul curent.
@@ -708,7 +803,12 @@ public class Game implements Runnable {
                 );
             }
 
-            SaveManager.saveGame(currentLevel, player.GetX(), player.GetY());
+            SaveManager.saveGame(
+                    currentLevel,
+                    player.GetX(),
+                    player.GetY(),
+                    getDefeatedEnemiesForSave()
+            );
 
             /// Redam un efect sonor scurt pentru salvare.
             AudioManager.getInstance().playSoundEffect("res/audio/save_theme.wav");
@@ -1186,4 +1286,3 @@ public class Game implements Runnable {
         }
     }
 }
-

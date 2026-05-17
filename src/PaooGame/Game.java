@@ -473,11 +473,16 @@ public class Game implements Runnable {
     }
 
     // =========================================================================
-    // COMBAT
-    // =========================================================================
+// COMBAT
+// =========================================================================
 
     /*! \fn private void checkCombat()
         \brief Verifica interactiunile de lupta dintre jucator si inamici.
+
+        \details
+        Damage-ul este ajustat in functie de dificultatea aleasa in Settings.
+        Pe EASY, playerul loveste mai tare si primeste mai putin damage.
+        Pe HARD, playerul loveste mai slab si primeste mai mult damage.
     */
     private void checkCombat() {
         if (player == null || player.isDead()) {
@@ -487,31 +492,48 @@ public class Game implements Runnable {
         Rectangle playerAtk = player.getAttackHitbox();
         Rectangle playerFeet = player.getFeetRect();
 
+        /*
+         * Calculam damage-ul in functie de dificultatea selectata in Settings.
+         *
+         * GameSettings.getPlayerDamage(...) modifica damage-ul dat de player.
+         * GameSettings.getEnemyDamage(...) modifica damage-ul primit de la inamici.
+         */
+        int playerAttackDamage = GameSettings.getPlayerDamage(Player.ATTACK_DAMAGE);
+
+        int wolfAttackDamage = GameSettings.getEnemyDamage(Enemy.ATTACK_DAMAGE);
+        int skeletonAttackDamage = GameSettings.getEnemyDamage(Skeleton.ATTACK_DAMAGE);
+        int spiderWebDamage = GameSettings.getEnemyDamage(Spider.WEB_DAMAGE);
+        int guardAttackDamage = GameSettings.getEnemyDamage(NPC.GUARD_ATTACK_DAMAGE);
+
         /// Atacul jucatorului loveste doar inamicii vii aflati in raza sabiei.
         if (playerAtk != null) {
             if (wolf != null && !wolf.isDead() && playerAtk.intersects(wolf.getFeetRect())) {
-                wolf.takeDamage(Player.ATTACK_DAMAGE);
+                wolf.takeDamage(playerAttackDamage);
             }
+
             if (skeleton != null && !skeleton.isDead() && playerAtk.intersects(skeleton.getFeetRect())) {
-                skeleton.takeDamage(Player.ATTACK_DAMAGE);
+                skeleton.takeDamage(playerAttackDamage);
             }
+
             if (spider != null && !spider.isDead() && playerAtk.intersects(spider.getFeetRect())) {
-                spider.takeDamage(Player.ATTACK_DAMAGE);
+                spider.takeDamage(playerAttackDamage);
             }
 
             for (NPC npc : npcs) {
-                if (npc.canBeAttacked() && playerAtk.intersects(npc.getFeetRect())) {
-                    npc.takeDamage(Player.ATTACK_DAMAGE);
+                if (npc != null && npc.canBeAttacked() && playerAtk.intersects(npc.getFeetRect())) {
+                    npc.takeDamage(playerAttackDamage);
                 }
             }
         }
 
-        /// Damage de contact.
+        /// Damage de contact cu lupul.
         if (wolf != null && !wolf.isDead() && playerFeet.intersects(wolf.getFeetRect())) {
-            player.takeDamage(Enemy.ATTACK_DAMAGE);
+            player.takeDamage(wolfAttackDamage);
         }
+
+        /// Damage de contact cu scheletul.
         if (skeleton != null && !skeleton.isDead() && playerFeet.intersects(skeleton.getFeetRect())) {
-            player.takeDamage(Skeleton.ATTACK_DAMAGE);
+            player.takeDamage(skeletonAttackDamage);
         }
 
         /// Proiectilul paianjenului loveste la distanta mica fata de jucator.
@@ -520,17 +542,19 @@ public class Game implements Runnable {
             float wy = spider.getWebY();
             float px = player.GetFeetCenterX();
             float py = player.GetFeetBottomY();
+
             double dist = Math.sqrt((wx - px) * (wx - px) + (wy - py) * (wy - py));
 
             if (dist < 16) {
-                player.takeDamage(Spider.WEB_DAMAGE);
+                player.takeDamage(spiderWebDamage);
                 spider.deactivateWeb();
             }
         }
 
+        /// NPC-urile ostile, de exemplu gardienii, pot da damage playerului.
         for (NPC npc : npcs) {
-            if (npc.canDamagePlayer(player)) {
-                player.takeDamage(NPC.GUARD_ATTACK_DAMAGE);
+            if (npc != null && npc.canDamagePlayer(player)) {
+                player.takeDamage(guardAttackDamage);
             }
         }
 
@@ -647,46 +671,51 @@ public class Game implements Runnable {
 
 
     /*! \fn private void saveCurrentGame(boolean showMessage)
+        \brief Salveaza progresul curent.
+
+        \param showMessage Daca este true, afiseaza mesaj de confirmare.
+    */
+    /*! \fn private void saveCurrentGame(boolean showMessage)
     \brief Salveaza progresul curent.
 
     \param showMessage Daca este true, afiseaza mesaj de confirmare.
 */
-private void saveCurrentGame(boolean showMessage) {
-    try {
-        if (player == null) {
-            throw new InvalidGameStateException(
-                    "Nu se poate salva jocul: playerul nu exista."
-            );
-        }
+    private void saveCurrentGame(boolean showMessage) {
+        try {
+            if (player == null) {
+                throw new InvalidGameStateException(
+                        "Nu se poate salva jocul: playerul nu exista."
+                );
+            }
 
-        SaveManager.saveGame(currentLevel, player.GetX(), player.GetY());
+            SaveManager.saveGame(currentLevel, player.GetX(), player.GetY());
 
-        /// Redam un efect sonor scurt pentru salvare.
-        AudioManager.getInstance().playSoundEffect("res/audio/save_theme.wav");
+            /// Redam un efect sonor scurt pentru salvare.
+            AudioManager.getInstance().playSoundEffect("res/audio/save_theme.wav");
 
-        if (showMessage) {
-            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
-                    null,
-                    "Jocul a fost salvat cu succes.",
-                    "Save Game",
-                    JOptionPane.INFORMATION_MESSAGE
-            ));
-        }
+            if (showMessage) {
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                        null,
+                        "Jocul a fost salvat cu succes.",
+                        "Save Game",
+                        JOptionPane.INFORMATION_MESSAGE
+                ));
+            }
 
-    } catch (InvalidGameStateException e) {
-        System.out.println(e.getMessage());
+        } catch (InvalidGameStateException e) {
+            System.out.println(e.getMessage());
 
-        if (showMessage) {
-            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
-                    null,
-                    e.getMessage(),
-                    "Save Game Error",
-                    JOptionPane.ERROR_MESSAGE
-            ));
+            if (showMessage) {
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                        null,
+                        e.getMessage(),
+                        "Save Game Error",
+                        JOptionPane.ERROR_MESSAGE
+                ));
+            }
         }
     }
-}
-    
+
     /*! \fn private void returnToMainMenu()
         \brief Cere revenirea in meniul principal si opreste jocul.
     */
@@ -700,9 +729,27 @@ private void saveCurrentGame(boolean showMessage) {
         runState = false;
     }
 
+    /*! \fn private void drawCinematicOverlay(Graphics2D g2d)
+    \brief Deseneaza un efect vizual cinematic peste joc.
+
+    \details
+    Este activat din Settings prin GameSettings.cinematicMode.
+    Nu afecteaza logica jocului, doar atmosfera vizuala.
+ */
+    private void drawCinematicOverlay(Graphics2D g2d) {
+        /// Umbra subtila peste scena.
+        g2d.setColor(new Color(0, 0, 0, 35));
+        g2d.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
+
+        /// Benzi cinematice sus si jos.
+        g2d.setColor(new Color(0, 0, 0, 170));
+        g2d.fillRect(0, 0, LOGICALWIDTH, 42);
+        g2d.fillRect(0, LOGICALHEIGHT - 42, LOGICALWIDTH, 42);
+    }
     // =========================================================================
     // DRAW
     // =========================================================================
+
 
     /*! \fn private void Draw()
         \brief Randeaza cadrul curent al jocului.
@@ -792,6 +839,14 @@ private void saveCurrentGame(boolean showMessage) {
         /// 4. Foreground-ul hartii.
         if (map != null && camera != null) {
             map.DrawForeground(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
+
+        /*
+         * Efect vizual cinematic activat din Settings.
+         * Nu il afisam peste debug, ca sa nu incurce verificarea coliziunilor.
+         */
+        if (GameSettings.cinematicMode && !Game.showHitboxes) {
+            drawCinematicOverlay(g2d);
         }
 
         /// 5. Barele de viata ale inamicilor, desenate peste foreground.
@@ -1024,7 +1079,6 @@ private void saveCurrentGame(boolean showMessage) {
                     19 * Tile.TILE_HEIGHT,
                     player
             );
-
         } else if (level == 3) {
             map = new Map(
                     "res/maps/level3_village_base.png",
@@ -1112,6 +1166,4 @@ private void saveCurrentGame(boolean showMessage) {
         }
     }
 }
-
-
 

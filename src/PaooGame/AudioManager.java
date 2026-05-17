@@ -1,5 +1,7 @@
 package PaooGame;
 
+import PaooGame.Exceptions.AudioLoadException;
+
 import javax.sound.sampled.*;
 import java.io.File;
 
@@ -11,8 +13,9 @@ import java.io.File;
     manager audio global in tot jocul. Astfel evitam situatia in care mai multe
     melodii ruleaza simultan fara control.
 
-    Muzica este redata folosind Clip din javax.sound.sampled.
-    Pentru simplitate, este recomandat sa folosim fisiere .wav.
+    Muzica si efectele sonore sunt redate folosind Clip din javax.sound.sampled.
+    Pentru proiect, este recomandat ca fisierele audio sa fie .wav,
+    PCM signed, 16-bit, 44100 Hz.
  */
 public class AudioManager {
 
@@ -34,7 +37,7 @@ public class AudioManager {
     /*! \brief Volumul muzicii, in decibeli. Valori negative inseamna mai incet. */
     private float musicVolume = -12.0f;
 
-    /*! \brief Volumul efectelor sonore. */
+    /*! \brief Volumul efectelor sonore, in decibeli. */
     private float soundVolume = -8.0f;
 
     /*! \brief Constructor privat pentru Singleton. */
@@ -52,12 +55,18 @@ public class AudioManager {
         return instance;
     }
 
+    // =========================================================================
+    // MUZICA DE FUNDAL
+    // =========================================================================
+
     /*! \fn public void playMusic(String path)
         \brief Porneste o melodie de fundal in loop.
 
         \details
         Daca aceeasi melodie ruleaza deja, nu o repornim.
         Daca ruleaza alta melodie, o oprim si pornim noua melodie.
+        Daca fisierul audio lipseste sau are format invalid, eroarea este tratata
+        prin AudioLoadException, fara sa opreasca jocul.
 
         \param path Calea catre fisierul audio.
      */
@@ -67,35 +76,41 @@ public class AudioManager {
         }
 
         try {
-            /// Daca melodia ceruta ruleaza deja, nu facem nimic.
-            if (currentMusic != null && path.equals(currentMusicPath) && currentMusic.isRunning()) {
+            /*
+             * Daca aceeasi melodie ruleaza deja, nu o incarcam din nou.
+             * Astfel evitam restartarea inutila a soundtrack-ului la fiecare update.
+             */
+            if (currentMusic != null
+                    && path.equals(currentMusicPath)
+                    && currentMusic.isRunning()) {
                 return;
             }
 
             /// Oprim melodia veche inainte sa pornim una noua.
             stopMusic();
 
-            File musicFile = new File(path);
+            /// Incarcam clipul audio folosind metoda care arunca AudioLoadException.
+            currentMusic = loadClip(path);
 
-            if (!musicFile.exists()) {
-                System.out.println("Fisier audio lipsa: " + path);
-                return;
-            }
-
-            AudioInputStream audioInputStream = getCompatibleAudioInputStream(musicFile);
-            currentMusic = AudioSystem.getClip();
-            currentMusic.open(audioInputStream);
-
+            /// Aplicam volumul pentru muzica.
             setClipVolume(currentMusic, musicVolume);
 
+            /// Muzica de fundal ruleaza continuu.
             currentMusic.loop(Clip.LOOP_CONTINUOUSLY);
             currentMusic.start();
 
             currentMusicPath = path;
 
-        } catch (Exception e) {
-            System.out.println("Eroare la redarea muzicii: " + path);
-            e.printStackTrace();
+        } catch (AudioLoadException e) {
+            /*
+             * Audio-ul nu este critic pentru rularea jocului.
+             * Daca lipseste o melodie sau formatul este incompatibil,
+             * afisam mesajul si continuam jocul.
+             */
+            System.out.println(e.getMessage());
+
+            currentMusic = null;
+            currentMusicPath = null;
         }
     }
 
@@ -104,15 +119,26 @@ public class AudioManager {
      */
     public void stopMusic() {
         if (currentMusic != null) {
-            currentMusic.stop();
+            if (currentMusic.isRunning()) {
+                currentMusic.stop();
+            }
+
             currentMusic.close();
             currentMusic = null;
             currentMusicPath = null;
         }
     }
 
+    // =========================================================================
+    // EFECTE SONORE
+    // =========================================================================
+
     /*! \fn public void playSoundEffect(String path)
         \brief Reda un efect sonor scurt o singura data.
+
+        \details
+        Efectele sonore sunt incarcate in clipuri separate, ca sa poata fi redate
+        peste muzica de fundal. Dupa terminare, clipul este inchis automat.
 
         \param path Calea catre fisierul audio.
      */
@@ -122,21 +148,11 @@ public class AudioManager {
         }
 
         try {
-            File soundFile = new File(path);
+            /// Incarcam efectul sonor.
+            Clip effectClip = loadClip(path);
 
-            if (!soundFile.exists()) {
-                System.out.println("Efect audio lipsa: " + path);
-                return;
-            }
-
-            AudioInputStream audioInputStream = getCompatibleAudioInputStream(soundFile);
-
-            Clip effectClip = AudioSystem.getClip();
-            effectClip.open(audioInputStream);
-
+            /// Aplicam volumul pentru efecte.
             setClipVolume(effectClip, soundVolume);
-
-            effectClip.start();
 
             /*
              * Cand efectul sonor se termina, inchidem Clip-ul.
@@ -148,24 +164,135 @@ public class AudioManager {
                 }
             });
 
-        } catch (Exception e) {
-            System.out.println("Eroare la redarea efectului sonor: " + path);
-            e.printStackTrace();
+            /// Pornim efectul sonor.
+            effectClip.start();
+
+        } catch (AudioLoadException e) {
+            /*
+             * Daca un efect sonor lipseste, jocul nu trebuie sa se opreasca.
+             * Afisam doar mesajul pentru debugging.
+             */
+            System.out.println(e.getMessage());
         }
     }
 
+    // =========================================================================
+    // INCARCARE AUDIO
+    // =========================================================================
+
+    /*! \fn private Clip loadClip(String path)
+        \brief Incarca un fisier audio si il transforma intr-un Clip redabil.
+
+        \details
+        Aceasta metoda centralizeaza incarcarea audio.
+        Daca fisierul lipseste sau formatul nu este suportat, arunca
+        AudioLoadException, o exceptie specifica proiectului.
+
+        \param path Calea catre fisierul audio.
+        \return Clip-ul audio incarcat.
+     */
+    private Clip loadClip(String path) {
+        if (path == null || path.trim().isEmpty()) {
+            throw new AudioLoadException("Cale audio invalida.");
+        }
+
+        File audioFile = new File(path);
+
+        if (!audioFile.exists() || !audioFile.isFile()) {
+            throw new AudioLoadException("Fisier audio lipsa: " + path);
+        }
+
+        try {
+            AudioInputStream audioInputStream = getCompatibleAudioInputStream(audioFile);
+
+            Clip clip = AudioSystem.getClip();
+            clip.open(audioInputStream);
+
+            audioInputStream.close();
+
+            return clip;
+
+        } catch (Exception e) {
+            throw new AudioLoadException(
+                    "Eroare la incarcarea fisierului audio: " + path,
+                    e
+            );
+        }
+    }
+
+    /*! \fn private AudioInputStream getCompatibleAudioInputStream(File file)
+        \brief Incarca un fisier audio si il converteste intr-un format compatibil cu Clip.
+
+        \details
+        Unele fisiere WAV descarcate de pe internet sunt pe 24-bit sau 48kHz,
+        iar Java poate refuza sa le redea direct. De aceea convertim fluxul audio
+        intr-un format PCM_SIGNED pe 16-bit, 44100 Hz.
+
+        \param file Fisierul audio.
+        \return Flux audio compatibil cu javax.sound.sampled.Clip.
+     */
+    private AudioInputStream getCompatibleAudioInputStream(File file) throws Exception {
+        AudioInputStream originalStream = AudioSystem.getAudioInputStream(file);
+        AudioFormat originalFormat = originalStream.getFormat();
+
+        int channels = originalFormat.getChannels();
+
+        /*
+         * In mod normal, fisierele audio au 1 canal mono sau 2 canale stereo.
+         * Daca Java nu poate detecta numarul de canale, folosim stereo ca fallback.
+         */
+        if (channels <= 0) {
+            channels = 2;
+        }
+
+        AudioFormat targetFormat = new AudioFormat(
+                AudioFormat.Encoding.PCM_SIGNED,
+                44100.0f,
+                16,
+                channels,
+                channels * 2,
+                44100.0f,
+                false
+        );
+
+        return AudioSystem.getAudioInputStream(targetFormat, originalStream);
+    }
+
+    // =========================================================================
+    // VOLUM
+    // =========================================================================
+
     /*! \fn private void setClipVolume(Clip clip, float volume)
         \brief Seteaza volumul unui clip audio.
+
+        \details
+        Volumul este limitat intre valorile permise de FloatControl,
+        ca sa evitam exceptii daca trimitem o valoare prea mare sau prea mica.
 
         \param clip Clip-ul audio.
         \param volume Volumul in decibeli.
      */
     private void setClipVolume(Clip clip, float volume) {
+        if (clip == null) {
+            return;
+        }
+
         if (clip.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
-            FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
-            gainControl.setValue(volume);
+            FloatControl gainControl =
+                    (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
+
+            float min = gainControl.getMinimum();
+            float max = gainControl.getMaximum();
+
+            float safeVolume = Math.max(min, Math.min(max, volume));
+
+            gainControl.setValue(safeVolume);
         }
     }
+
+    // =========================================================================
+    // SETARI AUDIO
+    // =========================================================================
 
     /*! \fn public void setMusicEnabled(boolean musicEnabled)
         \brief Activeaza sau dezactiveaza muzica.
@@ -197,33 +324,5 @@ public class AudioManager {
      */
     public boolean isSoundEffectsEnabled() {
         return soundEffectsEnabled;
-    }
-
-    /*! \fn private AudioInputStream getCompatibleAudioInputStream(File file)
-    \brief Incarca un fisier audio si il converteste intr-un format compatibil cu Clip.
-
-    \details
-    Unele fisiere WAV descarcate de pe internet sunt pe 24-bit sau 48kHz,
-    iar Java poate refuza sa le redea direct. De aceea convertim fluxul audio
-    intr-un format PCM_SIGNED pe 16-bit, 44100 Hz.
-
-    \param file Fisierul audio.
-    \return Flux audio compatibil cu javax.sound.sampled.Clip.
- */
-    private AudioInputStream getCompatibleAudioInputStream(File file) throws Exception {
-        AudioInputStream originalStream = AudioSystem.getAudioInputStream(file);
-        AudioFormat originalFormat = originalStream.getFormat();
-
-        AudioFormat targetFormat = new AudioFormat(
-                AudioFormat.Encoding.PCM_SIGNED,
-                44100.0f,
-                16,
-                originalFormat.getChannels(),
-                originalFormat.getChannels() * 2,
-                44100.0f,
-                false
-        );
-
-        return AudioSystem.getAudioInputStream(targetFormat, originalStream);
     }
 }

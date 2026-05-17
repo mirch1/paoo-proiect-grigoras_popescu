@@ -305,15 +305,35 @@ public class Game implements Runnable {
     }
 
     /*! \fn private boolean shouldPlayBattleMusic()
-        \brief Verifica daca in nivelul curent exista un inamic activ aproape de jucator.
+    \brief Verifica daca in nivelul curent exista un inamic activ aproape de jucator.
 
-        \return true daca trebuie pornita muzica de lupta.
-     */
+    \details
+    Verifica atat inamicii clasici, precum lupul, scheletul si paianjenul,
+    cat si NPC-urile ostile, cum sunt gardienii regali din Great Hall.
+
+    \return true daca trebuie pornita muzica de lupta.
+ */
     private boolean shouldPlayBattleMusic() {
-        return isEnemyCloseForBattle(wolf, 220)
+        if (isEnemyCloseForBattle(wolf, 220)
                 || isEnemyCloseForBattle(skeleton, 220)
-                || isEnemyCloseForBattle(spider, 220);
+                || isEnemyCloseForBattle(spider, 220)) {
+            return true;
+        }
+
+    /*
+     * In Great Hall, cavalerii/gardienii sunt tinuti in lista npcs,
+     * nu in variabilele wolf/skeleton/spider.
+     * De aceea trebuie verificati separat pentru battle music.
+     */
+        for (NPC npc : npcs) {
+            if (npc != null && npc.isGuardActive() && isEnemyCloseForBattle(npc, 220)) {
+                return true;
+            }
+        }
+
+        return false;
     }
+
 
     /*! \fn private void updateBattleMusic()
         \brief Schimba muzica intre tema nivelului si tema de lupta.

@@ -78,18 +78,31 @@ public class SaveManager {
     // =========================================================================
 
     /*! \fn public static void saveGame(int level, float playerX, float playerY)
-        \brief Salveaza nivelul curent si pozitia player-ului pentru profilul activ.
+    \brief Salveaza nivelul curent si pozitia player-ului pentru profilul activ.
+
+    \details
+    Aceasta varianta pastreaza compatibilitatea cu apelurile mai vechi,
+    unde nu se trimitea lista de inamici invinsi.
+ */
+    public static void saveGame(int level, float playerX, float playerY) {
+        saveGame(level, playerX, playerY, "");
+    }
+
+    /*! \fn public static void saveGame(int level, float playerX, float playerY, String defeatedEnemies)
+        \brief Salveaza progresul complet al jocului pentru profilul activ.
 
         \details
-        Salveaza datele in doua locuri:
-        1. in fisierul individual al profilului activ;
-        2. in obiectul PlayerProfile, ca meniul sa stie corect ca exista salvare.
+        Salveaza:
+        - nivelul curent;
+        - pozitia playerului;
+        - lista inamicilor invinsi in nivelul curent.
 
         \param level Nivelul curent.
         \param playerX Pozitia X a jucatorului.
         \param playerY Pozitia Y a jucatorului.
+        \param defeatedEnemies Lista de inamici invinsi, separati prin virgula.
      */
-    public static void saveGame(int level, float playerX, float playerY) {
+    public static void saveGame(int level, float playerX, float playerY, String defeatedEnemies) {
         try {
             File folder = new File(SAVE_FOLDER);
 
@@ -113,16 +126,23 @@ public class SaveManager {
             properties.setProperty("playerX", String.valueOf(playerX));
             properties.setProperty("playerY", String.valueOf(playerY));
 
+            /*
+             * Salvam inamicii invinsi.
+             * Exemplu:
+             * defeatedEnemies=wolf,skeleton,npc0,npc1
+             */
+            properties.setProperty(
+                    "defeatedEnemies",
+                    defeatedEnemies != null ? defeatedEnemies : ""
+            );
+
             try (FileOutputStream output = new FileOutputStream(saveFile)) {
                 properties.store(output, "Aethelgard Save Game");
             }
 
             /*
-             * Foarte important:
              * Actualizam si profilul activ.
-             *
-             * Altfel meniul nu stie ca jucatorul acesta are progres salvat.
-             * Aici era una dintre cauzele problemei cu mai multi jucatori.
+             * Astfel meniul stie ca jucatorul acesta are progres salvat.
              */
             ProfileManager.saveProgress(level, playerX, playerY);
 
@@ -134,7 +154,6 @@ public class SaveManager {
             e.printStackTrace();
         }
     }
-
     // =========================================================================
     //  INCARCARE
     // =========================================================================
@@ -218,7 +237,9 @@ public class SaveManager {
         float playerX = Float.parseFloat(properties.getProperty("playerX"));
         float playerY = Float.parseFloat(properties.getProperty("playerY"));
 
-        return new SaveGameState(level, playerX, playerY);
+        String defeatedEnemies = properties.getProperty("defeatedEnemies", "");
+
+        return new SaveGameState(level, playerX, playerY, defeatedEnemies);
     }
 
     // =========================================================================
@@ -252,3 +273,4 @@ public class SaveManager {
         return legacyFile.exists();
     }
 }
+

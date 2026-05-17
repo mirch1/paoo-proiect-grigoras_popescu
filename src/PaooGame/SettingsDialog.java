@@ -209,13 +209,34 @@ public class SettingsDialog extends JDialog {
         return button;
     }
 
+    /*! \fn private void applySettingsToRuntime()
+    \brief Aplica setarile asupra sistemelor active ale jocului.
+
+    \details
+    GameSettings retine valorile, dar aceasta metoda le conecteaza efectiv
+    la logica jocului: audio, efecte sonore si debug hitboxes.
+ */
+    private void applySettingsToRuntime() {
+        /// Aplicam setarile audio asupra AudioManager-ului.
+        AudioManager.getInstance().setMusicEnabled(GameSettings.musicEnabled);
+        AudioManager.getInstance().setSoundEffectsEnabled(GameSettings.sfxEnabled);
+
+        /// Aplicam setarea de debug hitboxes.
+        Game.showHitboxes = hitboxCheck.isSelected();
+    }
+
+    /*! \fn private void saveSettings()
+    \brief Salveaza si aplica setarile selectate in fereastra Settings.
+ */
     private void saveSettings() {
+        /// Salvam valorile bifate in GameSettings.
         GameSettings.musicEnabled = musicCheck.isSelected();
         GameSettings.sfxEnabled = sfxCheck.isSelected();
         GameSettings.cinematicMode = cinematicCheck.isSelected();
         GameSettings.difficulty = (String) difficultyCombo.getSelectedItem();
 
-        Game.showHitboxes = hitboxCheck.isSelected();
+        /// Aplicam imediat setarile in joc.
+        applySettingsToRuntime();
 
         JOptionPane.showMessageDialog(
                 this,
@@ -225,6 +246,9 @@ public class SettingsDialog extends JDialog {
         );
     }
 
+    /*! \fn private void resetSettings()
+    \brief Reseteaza setarile la valorile implicite si le aplica imediat.
+ */
     private void resetSettings() {
         GameSettings.resetToDefault();
 
@@ -233,5 +257,8 @@ public class SettingsDialog extends JDialog {
         cinematicCheck.setSelected(GameSettings.cinematicMode);
         hitboxCheck.setSelected(Game.showHitboxes);
         difficultyCombo.setSelectedItem(GameSettings.difficulty);
+
+        /// Aplicam imediat resetarea.
+        applySettingsToRuntime();
     }
 }

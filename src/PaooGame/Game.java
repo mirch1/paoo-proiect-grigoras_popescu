@@ -4,6 +4,8 @@ import PaooGame.enemies.Enemy;
 import PaooGame.enemies.Skeleton;
 import PaooGame.enemies.Spider;
 import PaooGame.enemies.EnemyFactory;
+import PaooGame.Exceptions.DatabaseException;
+import PaooGame.Exceptions.InvalidGameStateException;
 import PaooGame.GameWindow.GameWindow;
 import PaooGame.Graphics.Assets;
 import PaooGame.Tiles.Tile;
@@ -11,7 +13,6 @@ import PaooGame.Tiles.Tile;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferStrategy;
-import PaooGame.Exceptions.InvalidGameStateException;
 
 /*! \class Game
     \brief Clasa principala a jocului.
@@ -22,8 +23,7 @@ import PaooGame.Exceptions.InvalidGameStateException;
     - porneste game-loop-ul la aproximativ 60 FPS;
     - actualizeaza inputul, entitatile si camera;
     - deseneaza harta, personajele, meniul de pauza si HUD-ul;
-    - gestioneaza salvarea si tranzitiile intre niveluri.
-
+    - gestioneaza salvarea (inclusiv in baza de date) si tranzitiile intre niveluri.
 */
 public class Game implements Runnable {
 
@@ -36,7 +36,7 @@ public class Game implements Runnable {
     /// Thread-ul folosit pentru bucla principala a jocului.
     private Thread gameThread;
 
-    /// BufferStrategy pentru randare fluida.
+    /// BufferStrategy pentru randare fluida (triple buffering).
     private BufferStrategy bs;
 
     /// Harta nivelului curent.
@@ -51,84 +51,93 @@ public class Game implements Runnable {
     /// Jucatorul principal.
     private Player player;
 
-    /// Inamic specific nivelului 1.
+    /// Inamic specific nivelului 1 (lup).
     private Enemy wolf;
 
-    /// Inamic specific nivelului 2.
+    /// Inamic specific nivelului 2 (schelet).
     private Skeleton skeleton;
 
-    /// Al doilea inamic specific nivelului 2.
+    /// Al doilea inamic specific nivelului 2 (paianjen).
     private Spider spider;
 
+    /// Lista de NPC-uri din nivelul curent (garzi, sateni, garzi regale).
     private java.util.List<NPC> npcs = new java.util.ArrayList<>();
 
-    /// Nivelul curent incarcat.
+    /// Nivelul curent incarcat (1-4).
     private int currentLevel;
 
-    /// Cooldown scurt pentru a preveni tranzitii multiple instant.
+    /// Cooldown scurt pentru a preveni tranzitii multiple instant la schimbarea de nivel.
     private int transitionCooldown;
 
-    /// Latimea logica a scenei de joc.
+    /// Latimea logica a scenei de joc (rezolutie virtuala interna).
     private final int LOGICALWIDTH = 800;
 
-    /// Inaltimea logica a scenei de joc.
+    /// Inaltimea logica a scenei de joc (rezolutie virtuala interna).
     private final int LOGICALHEIGHT = 600;
 
     /// Contextul grafic folosit la desenare.
     private Graphics g;
 
-    /// Arata daca jocul este in pauza.
+    /// Arata daca jocul este in pauza (meniu pauza activ).
     private boolean isPaused = false;
 
     /*! \brief Retine daca jocul este in stare de lupta.
 
-    \details
-    Este folosit pentru a schimba soundtrack-ul doar o singura data
-    cand jucatorul intra sau iese din raza unui inamic.
- */
+        \details
+        Este folosit pentru a schimba soundtrack-ul doar o singura data
+        cand jucatorul intra sau iese din raza unui inamic.
+    */
     private boolean inBattle = false;
 
-    /// Optiunea curenta selectata in meniul de pauza.
+    /// Optiunea curenta selectata in meniul de pauza (0-3).
     private int pauseMenuSelection = 0;
 
-    /// Arata daca ecranul de moarte este activ.
+    /// Arata daca ecranul de moarte (YOU DIED) este activ.
     private boolean isDeathScreen = false;
 
-    /// Optiunea curenta selectata in ecranul de moarte.
+    /// Optiunea curenta selectata in ecranul de moarte (0 = TRY AGAIN, 1 = EXIT GAME).
     private int deathMenuSelection = 0;
 
-    /// Nivelul in care jucatorul a murit.
+    /// Nivelul in care jucatorul a murit — folosit pentru retry pe acelasi nivel.
     private int deathLevel = 1;
 
+    /// Subtitlul afisat pe ecranul de moarte (ex. "BAD ENTRANCE").
     private String deathSubtitle = "";
 
     /// Marcheaza revenirea in meniul principal dupa oprirea jocului.
     private volatile boolean returnToMenuRequested = false;
 
-    /// Activeaza overlay-ul de debug.
+    /// Activeaza overlay-ul de debug (hitbox-uri + FPS).
     public static boolean showHitboxes = false;
 
     /// FPS-ul curent calculat o data pe secunda.
     public static int currentFPS = 0;
 
-    /// Stari anterioare ale tastelor pentru detectia apasarilor unice.
+    /// Stari anterioare ale tastelor pentru detectia apasarilor unice (edge detection).
     private boolean lastEscapeState = false;
-    private boolean lastUpState = false;
-    private boolean lastDownState = false;
-    private boolean lastEnterState = false;
-    private boolean lastDebugState = false;
+    private boolean lastUpState     = false;
+    private boolean lastDownState   = false;
+    private boolean lastEnterState  = false;
+    private boolean lastDebugState  = false;
 
-    /// Daca este true, jocul incearca sa incarce progresul salvat.
+    /// Daca este true, jocul incearca sa incarce progresul salvat la initializare.
     private boolean loadSavedGame = false;
 
-    /// Obiectul care retine starea citita din save file.
+    /// Obiectul care retine starea citita din save file la Load Game.
     private SaveGameState savedGameState = null;
 
-    /*! \fn public Game(String title, int width, int height)
-        \brief Constructor pentru joc nou.
+    /// Scorul acumulat in sesiunea curenta de joc.
+    private int score = 0;
 
-        \param title Titlul ferestrei.
-        \param width Latimea ferestrei.
+    // =========================================================================
+    //  CONSTRUCTORI
+    // =========================================================================
+
+    /*! \fn public Game(String title, int width, int height)
+        \brief Constructor pentru joc nou (fara save).
+
+        \param title  Titlul ferestrei.
+        \param width  Latimea ferestrei.
         \param height Inaltimea ferestrei.
     */
     public Game(String title, int width, int height) {
@@ -138,16 +147,20 @@ public class Game implements Runnable {
     /*! \fn public Game(String title, int width, int height, boolean loadSavedGame)
         \brief Constructor general al jocului.
 
-        \param title Titlul ferestrei.
-        \param width Latimea ferestrei.
-        \param height Inaltimea ferestrei.
-        \param loadSavedGame Daca este true, jocul porneste dintr-o salvare.
+        \param title         Titlul ferestrei.
+        \param width         Latimea ferestrei.
+        \param height        Inaltimea ferestrei.
+        \param loadSavedGame Daca este true, jocul porneste dintr-o salvare existenta.
     */
     public Game(String title, int width, int height, boolean loadSavedGame) {
         wnd = new GameWindow(title, width, height);
         runState = false;
         this.loadSavedGame = loadSavedGame;
     }
+
+    // =========================================================================
+    //  INITIALIZARE
+    // =========================================================================
 
     /*! \fn private void InitGame()
         \brief Initializeaza jocul si resursele de baza.
@@ -156,12 +169,15 @@ public class Game implements Runnable {
         Se construieste fereastra, se incarca asset-urile, se initializeaza
         inputul si camera, iar apoi se incarca fie salvarea existenta,
         fie primul nivel al jocului.
+
+        La initializare, DatabaseManager este pornit implicit la prima
+        salvare/incarcare de scor. Nu este nevoie de apel explicit aici.
     */
     private void InitGame() {
         wnd.BuildGameWindow();
         Assets.Init();
 
-        currentLevel = 1;
+        currentLevel       = 1;
         transitionCooldown = 0;
 
         keyManager = new KeyManager();
@@ -178,31 +194,43 @@ public class Game implements Runnable {
                 if (player != null) {
                     player.setPosition(savedGameState.getPlayerX(), savedGameState.getPlayerY());
                 }
+
                 /*
                  * Dupa ce nivelul a fost incarcat si inamicii au fost creati,
                  * restauram starea inamicilor invinsi din salvare.
                  */
                 applyDefeatedEnemies(savedGameState);
 
+                /// Restauram scorul din save — jucatorul continua de unde a ramas.
+                score = savedGameState.getScore();
+
                 if (camera != null && map != null && player != null) {
                     camera.CenterOnPlayer(player, map);
                 }
             } else {
+                /// Save-ul nu a putut fi citit — pornim un joc nou de la nivelul 1.
                 currentLevel = 1;
                 loadLevel(currentLevel);
             }
         } else {
+            /// Joc nou — pornim intotdeauna de la nivelul 1.
             currentLevel = 1;
             loadLevel(currentLevel);
         }
     }
 
+    // =========================================================================
+    //  GAME LOOP
+    // =========================================================================
+
     /*! \fn public void run()
         \brief Game-loop-ul principal.
 
         \details
-        Ruleaza cat timp `runState` este activ si incearca sa mentina
+        Ruleaza cat timp runState este activ si incearca sa mentina
         actualizarea si randarea la aproximativ 60 FPS.
+        La finalul buclei, daca returnToMenuRequested este true,
+        inchide fereastra de joc si redeschide meniul principal.
     */
     @Override
     public void run() {
@@ -210,37 +238,31 @@ public class Game implements Runnable {
 
         long oldTime = System.nanoTime();
         long currentTime;
-        final double timeFrame = 1000000000.0 / 60.0;
+        final double timeFrame = 1_000_000_000.0 / 60.0;
 
-        int frames = 0;
-        long timer = System.currentTimeMillis();
+        int  frames = 0;
+        long timer  = System.currentTimeMillis();
 
         while (runState) {
             currentTime = System.nanoTime();
-
             if ((currentTime - oldTime) > timeFrame) {
                 Update();
-                if (!runState) {
-                    break;
-                }
-
+                if (!runState) break;
                 Draw();
                 oldTime = currentTime;
                 frames++;
             }
-
             if (System.currentTimeMillis() - timer >= 1000) {
                 currentFPS = frames;
-                frames = 0;
-                timer += 1000;
+                frames     = 0;
+                timer     += 1000;
             }
         }
 
+        /// La iesirea din bucla, daca s-a cerut revenirea la meniu, facem tranzitia.
         if (returnToMenuRequested) {
             SwingUtilities.invokeLater(() -> {
-                if (wnd != null) {
-                    wnd.CloseWindow();
-                }
+                if (wnd != null) wnd.CloseWindow();
                 Toolkit.getDefaultToolkit().sync();
                 SwingUtilities.invokeLater(() -> {
                     MenuWindow menu = new MenuWindow();
@@ -255,24 +277,64 @@ public class Game implements Runnable {
     */
     public synchronized void StartGame() {
         if (!runState) {
-            runState = true;
+            runState   = true;
             gameThread = new Thread(this);
             gameThread.start();
         }
     }
 
+    /*! \fn public synchronized void StopGame()
+        \brief Opreste jocul si asteapta terminarea thread-ului.
+    */
+    public synchronized void StopGame() {
+        if (runState) {
+            runState = false;
+            if (Thread.currentThread() == gameThread) return;
+            try {
+                if (gameThread != null) gameThread.join();
+            } catch (InterruptedException ex) {
+                ex.printStackTrace();
+            }
+        }
+    }
+
     // =========================================================================
-// AUDIO
-// =========================================================================
+    //  SCOR
+    // =========================================================================
+
+    /*! \fn public void addScore(int points)
+        \brief Adauga puncte la scorul curent si actualizeaza best score-ul in profil.
+
+        \param points Numarul de puncte de adaugat.
+    */
+    public void addScore(int points) {
+        score += points;
+
+        /// Actualizam best score-ul in profilul activ daca scorul curent il depaseste.
+        PlayerProfile profile = ProfileManager.getActive();
+        if (profile != null) {
+            profile.setBestScore(score);
+        }
+    }
+
+    /*! \fn public int getScore()
+        \brief Returneaza scorul curent al sesiunii.
+        \return Scorul acumulat pana in acest moment.
+    */
+    public int getScore() { return score; }
+
+    // =========================================================================
+    //  AUDIO
+    // =========================================================================
 
     /*! \fn private void updateLevelMusic()
         \brief Porneste soundtrack-ul potrivit pentru nivelul curent.
 
         \details
         Aceasta metoda este apelata cand se incarca un nivel nou.
-        Muzica de battle nu este pornita aici, ci separat, in functie de apropierea
-        jucatorului de inamici.
-     */
+        Muzica de battle nu este pornita aici, ci separat, in functie
+        de apropierea jucatorului de inamici.
+    */
     private void updateLevelMusic() {
         /// Cand incarcam un nivel nou, iesim automat din starea de lupta.
         inBattle = false;
@@ -287,56 +349,52 @@ public class Game implements Runnable {
     }
 
     /*! \fn private boolean isEnemyCloseForBattle(Entity enemy, float radius)
-        \brief Verifica daca un inamic este suficient de aproape pentru a porni muzica de lupta.
+        \brief Verifica daca un inamic este suficient de aproape pentru battle music.
 
-        \param enemy Inamicul verificat.
-        \param radius Raza de detectie pentru battle music.
-        \return true daca inamicul este viu si aproape de jucator.
-     */
+        \param enemy  Inamicul verificat.
+        \param radius Raza de detectie in pixeli.
+        \return true daca inamicul este viu si in raza jucatorului.
+    */
     private boolean isEnemyCloseForBattle(Entity enemy, float radius) {
-        if (player == null || enemy == null || enemy.isDead()) {
-            return false;
-        }
+        if (player == null || enemy == null || enemy.isDead()) return false;
 
-        float dx = player.GetFeetCenterX() - enemy.GetFeetCenterX();
-        float dy = player.GetFeetBottomY() - enemy.GetFeetBottomY();
-
+        float  dx       = player.GetFeetCenterX() - enemy.GetFeetCenterX();
+        float  dy       = player.GetFeetBottomY() - enemy.GetFeetBottomY();
         double distance = Math.sqrt(dx * dx + dy * dy);
 
         /*
-         * Pornim muzica de battle fie daca inamicul este aproape,
-         * fie daca hitbox-urile se intersecteaza deja.
+         * Pornim muzica de battle fie daca inamicul este in raza,
+         * fie daca hitbox-urile se intersecteaza deja (combat activ).
          */
         return distance <= radius || player.getFeetRect().intersects(enemy.getFeetRect());
     }
 
     /*! \fn private boolean shouldPlayBattleMusic()
-    \brief Verifica daca in nivelul curent exista un inamic activ aproape de jucator.
+        \brief Verifica daca in nivelul curent exista un inamic activ aproape de jucator.
 
-    \details
-    Verifica atat inamicii clasici, precum lupul, scheletul si paianjenul,
-    cat si NPC-urile ostile, cum sunt gardienii regali din Great Hall.
+        \details
+        Verifica atat inamicii clasici (lup, schelet, paianjen),
+        cat si NPC-urile ostile (gardienii regali din Great Hall).
 
-    \return true daca trebuie pornita muzica de lupta.
- */
+        \return true daca trebuie pornita muzica de lupta.
+    */
     private boolean shouldPlayBattleMusic() {
-        if (isEnemyCloseForBattle(wolf, 220)
-                || isEnemyCloseForBattle(skeleton, 220)
-                || isEnemyCloseForBattle(spider, 220)) {
+        if (isEnemyCloseForBattle(wolf,     220) ||
+            isEnemyCloseForBattle(skeleton, 220) ||
+            isEnemyCloseForBattle(spider,   220)) {
             return true;
         }
 
         /*
-         * In Great Hall, cavalerii/gardienii sunt tinuti in lista npcs,
+         * In Great Hall, cavalerii/gardienii sunt in lista npcs,
          * nu in variabilele wolf/skeleton/spider.
-         * De aceea trebuie verificati separat pentru battle music.
+         * De aceea trebuie verificati separat.
          */
         for (NPC npc : npcs) {
             if (npc != null && npc.isGuardActive() && isEnemyCloseForBattle(npc, 220)) {
                 return true;
             }
         }
-
         return false;
     }
 
@@ -346,7 +404,7 @@ public class Game implements Runnable {
         \details
         Daca jucatorul se apropie de un inamic, pornim battle_theme.
         Cand nu mai exista inamic viu aproape, revenim la muzica nivelului curent.
-     */
+    */
     private void updateBattleMusic() {
         if (isDeathScreen || player == null || player.isDead()) {
             inBattle = false;
@@ -359,36 +417,14 @@ public class Game implements Runnable {
             inBattle = true;
             AudioManager.getInstance().playMusic("res/audio/battle_theme.wav");
         }
-
         if (!shouldBeInBattle && inBattle) {
             inBattle = false;
             updateLevelMusic();
         }
     }
 
-    /*! \fn public synchronized void StopGame()
-        \brief Opreste jocul si asteapta terminarea thread-ului.
-    */
-    public synchronized void StopGame() {
-        if (runState) {
-            runState = false;
-        }
-
-        if (Thread.currentThread() == gameThread) {
-            return;
-        }
-
-        try {
-            if (gameThread != null) {
-                gameThread.join();
-            }
-        } catch (InterruptedException ex) {
-            ex.printStackTrace();
-        }
-    }
-
     // =========================================================================
-    // UPDATE
+    //  UPDATE
     // =========================================================================
 
     /*! \fn private void Update()
@@ -406,13 +442,13 @@ public class Game implements Runnable {
             return;
         }
 
-        /// Comutare mod debug.
+        /// Comutare mod debug cu tasta dedicata.
         if (keyManager.debug && !lastDebugState) {
             showHitboxes = !showHitboxes;
         }
         lastDebugState = keyManager.debug;
 
-        /// Comutare pauza.
+        /// Comutare pauza cu ESC.
         if (keyManager.escape && !lastEscapeState) {
             isPaused = !isPaused;
         }
@@ -422,46 +458,28 @@ public class Game implements Runnable {
         if (isPaused) {
             if (keyManager.up && !lastUpState) {
                 pauseMenuSelection--;
-                if (pauseMenuSelection < 0) {
-                    pauseMenuSelection = 3;
-                }
+                if (pauseMenuSelection < 0) pauseMenuSelection = 3;
             }
-
             if (keyManager.down && !lastDownState) {
                 pauseMenuSelection++;
-                if (pauseMenuSelection > 3) {
-                    pauseMenuSelection = 0;
-                }
+                if (pauseMenuSelection > 3) pauseMenuSelection = 0;
             }
-
             if (keyManager.enter && !lastEnterState) {
                 executePauseMenuAction();
             }
-
-            lastUpState = keyManager.up;
-            lastDownState = keyManager.down;
+            lastUpState    = keyManager.up;
+            lastDownState  = keyManager.down;
             lastEnterState = keyManager.enter;
             return;
         }
 
         /// Actualizare entitati.
-        if (player != null && map != null) {
-            player.Update(keyManager, map);
-        }
-        if (wolf != null && map != null) {
-            wolf.Update(map);
-        }
-        if (skeleton != null && map != null) {
-            skeleton.Update(map);
-        }
-        if (spider != null && map != null) {
-            spider.Update(map);
-        }
-
+        if (player != null && map != null) player.Update(keyManager, map);
+        if (wolf     != null && map != null) wolf.Update(map);
+        if (skeleton != null && map != null) skeleton.Update(map);
+        if (spider   != null && map != null) spider.Update(map);
         if (map != null) {
-            for (NPC npc : npcs) {
-                npc.Update(map);
-            }
+            for (NPC npc : npcs) npc.Update(map);
         }
 
         /// Camera urmareste jucatorul activ.
@@ -470,10 +488,9 @@ public class Game implements Runnable {
         }
 
         /// Scadem cooldown-ul pentru schimbarea de nivel.
-        if (transitionCooldown > 0) {
-            transitionCooldown--;
-        }
+        if (transitionCooldown > 0) transitionCooldown--;
 
+        /// Detectam tentativele de intrare ilegala pe harta (Bad Entrance).
         if (isBadEntranceAttempt()) {
             openDeathScreen("BAD ENTRANCE");
             return;
@@ -481,25 +498,23 @@ public class Game implements Runnable {
 
         /// Verificam tranzitiile si combat-ul.
         checkLevelTransition();
-        if (player != null) {
-            checkCombat();
+        if (player != null) checkCombat();
 
-            /*
-             * Actualizam soundtrack-ul de battle dupa combat.
-             * Daca jucatorul este aproape de un inamic viu, pornim muzica de lupta.
-             * Daca se indeparteaza sau inamicul moare, revenim la tema nivelului.
-             */
-            updateBattleMusic();
-        }
+        /*
+         * Actualizam soundtrack-ul de battle dupa combat.
+         * Daca jucatorul este aproape de un inamic viu, pornim muzica de lupta.
+         * Daca se indeparteaza sau inamicul moare, revenim la tema nivelului.
+         */
+        updateBattleMusic();
 
-        lastUpState = keyManager.up;
-        lastDownState = keyManager.down;
+        lastUpState    = keyManager.up;
+        lastDownState  = keyManager.down;
         lastEnterState = keyManager.enter;
     }
 
     // =========================================================================
-// COMBAT
-// =========================================================================
+    //  COMBAT
+    // =========================================================================
 
     /*! \fn private void checkCombat()
         \brief Verifica interactiunile de lupta dintre jucator si inamici.
@@ -508,78 +523,78 @@ public class Game implements Runnable {
         Damage-ul este ajustat in functie de dificultatea aleasa in Settings.
         Pe EASY, playerul loveste mai tare si primeste mai putin damage.
         Pe HARD, playerul loveste mai slab si primeste mai mult damage.
+
+        Scorul este acordat o singura data per inamic (flag isScoreAwarded).
     */
     private void checkCombat() {
-        if (player == null || player.isDead()) {
-            return;
-        }
+        if (player == null || player.isDead()) return;
 
-        Rectangle playerAtk = player.getAttackHitbox();
+        Rectangle playerAtk  = player.getAttackHitbox();
         Rectangle playerFeet = player.getFeetRect();
 
-        /*
-         * Calculam damage-ul in functie de dificultatea selectata in Settings.
-         *
-         * GameSettings.getPlayerDamage(...) modifica damage-ul dat de player.
-         * GameSettings.getEnemyDamage(...) modifica damage-ul primit de la inamici.
-         */
-        int playerAttackDamage = GameSettings.getPlayerDamage(Player.ATTACK_DAMAGE);
-
-        int wolfAttackDamage = GameSettings.getEnemyDamage(Enemy.ATTACK_DAMAGE);
+        int playerAttackDamage   = GameSettings.getPlayerDamage(Player.ATTACK_DAMAGE);
+        int wolfAttackDamage     = GameSettings.getEnemyDamage(Enemy.ATTACK_DAMAGE);
         int skeletonAttackDamage = GameSettings.getEnemyDamage(Skeleton.ATTACK_DAMAGE);
-        int spiderWebDamage = GameSettings.getEnemyDamage(Spider.WEB_DAMAGE);
-        int guardAttackDamage = GameSettings.getEnemyDamage(NPC.GUARD_ATTACK_DAMAGE);
+        int spiderWebDamage      = GameSettings.getEnemyDamage(Spider.WEB_DAMAGE);
+        int guardAttackDamage    = GameSettings.getEnemyDamage(NPC.GUARD_ATTACK_DAMAGE);
 
-        /// Atacul jucatorului loveste doar inamicii vii aflati in raza sabiei.
+        /// Jucatorul ataca inamicii cu hitbox-ul de atac.
         if (playerAtk != null) {
-            if (wolf != null && !wolf.isDead() && playerAtk.intersects(wolf.getFeetRect())) {
+            if (wolf     != null && !wolf.isDead()     && playerAtk.intersects(wolf.getFeetRect()))
                 wolf.takeDamage(playerAttackDamage);
-            }
-
-            if (skeleton != null && !skeleton.isDead() && playerAtk.intersects(skeleton.getFeetRect())) {
+            if (skeleton != null && !skeleton.isDead() && playerAtk.intersects(skeleton.getFeetRect()))
                 skeleton.takeDamage(playerAttackDamage);
-            }
-
-            if (spider != null && !spider.isDead() && playerAtk.intersects(spider.getFeetRect())) {
+            if (spider   != null && !spider.isDead()   && playerAtk.intersects(spider.getFeetRect()))
                 spider.takeDamage(playerAttackDamage);
-            }
-
             for (NPC npc : npcs) {
-                if (npc != null && npc.canBeAttacked() && playerAtk.intersects(npc.getFeetRect())) {
+                if (npc != null && npc.canBeAttacked() && playerAtk.intersects(npc.getFeetRect()))
                     npc.takeDamage(playerAttackDamage);
-                }
             }
         }
 
-        /// Damage de contact cu lupul.
-        if (wolf != null && !wolf.isDead() && playerFeet.intersects(wolf.getFeetRect())) {
+        /// Inamicii lovesc jucatorul prin contact direct (coliziune picioare).
+        if (wolf     != null && !wolf.isDead()     && playerFeet.intersects(wolf.getFeetRect()))
             player.takeDamage(wolfAttackDamage);
-        }
-
-        /// Damage de contact cu scheletul.
-        if (skeleton != null && !skeleton.isDead() && playerFeet.intersects(skeleton.getFeetRect())) {
+        if (skeleton != null && !skeleton.isDead() && playerFeet.intersects(skeleton.getFeetRect()))
             player.takeDamage(skeletonAttackDamage);
-        }
 
-        /// Proiectilul paianjenului loveste la distanta mica fata de jucator.
+        /// Paianjenul loveste prin proiectil (panza).
         if (spider != null && !spider.isDead() && spider.isWebActive()) {
-            float wx = spider.getWebX();
-            float wy = spider.getWebY();
-            float px = player.GetFeetCenterX();
-            float py = player.GetFeetBottomY();
-
+            float wx = spider.getWebX(), wy = spider.getWebY();
+            float px = player.GetFeetCenterX(), py = player.GetFeetBottomY();
             double dist = Math.sqrt((wx - px) * (wx - px) + (wy - py) * (wy - py));
-
             if (dist < 16) {
                 player.takeDamage(spiderWebDamage);
                 spider.deactivateWeb();
             }
         }
 
-        /// NPC-urile ostile, de exemplu gardienii, pot da damage playerului.
+        /// Gardienii NPC lovesc jucatorul daca sunt in raza de atac.
         for (NPC npc : npcs) {
-            if (npc != null && npc.canDamagePlayer(player)) {
+            if (npc != null && npc.canDamagePlayer(player))
                 player.takeDamage(guardAttackDamage);
+        }
+
+        /// Acorda scor o singura data la moartea fiecarui inamic.
+        if (wolf     != null && wolf.isDead()     && !wolf.isScoreAwarded()) {
+            addScore(GameSettings.SCORE_WOLF_KILLED);
+            wolf.setScoreAwarded(true);
+        }
+        if (skeleton != null && skeleton.isDead() && !skeleton.isScoreAwarded()) {
+            addScore(GameSettings.SCORE_SKELETON_KILLED);
+            skeleton.setScoreAwarded(true);
+        }
+        if (spider   != null && spider.isDead()   && !spider.isScoreAwarded()) {
+            addScore(GameSettings.SCORE_SPIDER_KILLED);
+            spider.setScoreAwarded(true);
+        }
+
+        /// Acorda scor pentru NPC-urile ostile eliminate (gardienii regali din Great Hall).
+        for (int i = 0; i < npcs.size(); i++) {
+            NPC npc = npcs.get(i);
+            if (npc != null && npc.isDefeated() && !npc.isScoreAwarded()) {
+                addScore(GameSettings.SCORE_GUARDIAN_KILLED);
+                npc.setScoreAwarded(true);
             }
         }
 
@@ -590,89 +605,112 @@ public class Game implements Runnable {
     }
 
     // =========================================================================
-    // ECRAN DE MOARTE
+    //  ECRAN DE MOARTE
     // =========================================================================
 
+    /*! \fn private void openDeathScreen()
+        \brief Deschide ecranul de moarte fara subtitlu.
+    */
     private void openDeathScreen() {
         openDeathScreen("");
     }
 
+    /*! \fn private void openDeathScreen(String subtitle)
+        \brief Deschide ecranul de moarte cu subtitlul specificat.
+
+        \param subtitle Textul afisat sub "YOU DIED" (ex. "BAD ENTRANCE").
+    */
     private void openDeathScreen(String subtitle) {
-        deathLevel = currentLevel;
+        deathLevel         = currentLevel;
         deathMenuSelection = 0;
-        deathSubtitle = subtitle;
-        isDeathScreen = true;
-        isPaused = false;
+        deathSubtitle      = subtitle;
+        isDeathScreen      = true;
+        isPaused           = false;
 
         AudioManager.getInstance().stopMusic();
         inBattle = false;
 
-        if (keyManager != null) {
-            keyManager.Clear();
-        }
-
-        lastUpState = false;
-        lastDownState = false;
-        lastEnterState = false;
+        if (keyManager != null) keyManager.Clear();
+        lastUpState     = false;
+        lastDownState   = false;
+        lastEnterState  = false;
         lastEscapeState = false;
     }
 
     /*! \fn private void updateDeathScreen()
         \brief Gestioneaza navigarea in meniul afisat dupa moarte.
+
+        \details
+        Navigare cu sus/jos, confirmare cu Enter.
+
+        FIX: "score = 0" a fost ELIMINAT din aceasta metoda.
+        Anterior era plasat in afara if-ului de Enter, deci se executa la
+        FIECARE FRAME cat timp ecranul de moarte era activ, resetand scorul
+        la 0 inainte de orice actiune a jucatorului.
+        Acum scorul este resetat EXCLUSIV in executeDeathMenuAction(),
+        doar la selectia TRY AGAIN (deathMenuSelection == 0).
     */
     private void updateDeathScreen() {
         if (keyManager.up && !lastUpState) {
             deathMenuSelection--;
-            if (deathMenuSelection < 0) {
-                deathMenuSelection = 1;
-            }
+            if (deathMenuSelection < 0) deathMenuSelection = 1;
         }
-
         if (keyManager.down && !lastDownState) {
             deathMenuSelection++;
-            if (deathMenuSelection > 1) {
-                deathMenuSelection = 0;
-            }
+            if (deathMenuSelection > 1) deathMenuSelection = 0;
         }
-
         if (keyManager.enter && !lastEnterState) {
             executeDeathMenuAction();
         }
-
-        lastUpState = keyManager.up;
-        lastDownState = keyManager.down;
+        lastUpState    = keyManager.up;
+        lastDownState  = keyManager.down;
         lastEnterState = keyManager.enter;
     }
 
     /*! \fn private void executeDeathMenuAction()
-        \brief Executa TRY AGAIN sau EXIT GAME.
+        \brief Executa actiunea selectata in ecranul de moarte.
+
+        \details
+        TRY AGAIN (deathMenuSelection == 0):
+        - Reseteaza scorul la 0 — sesiunea noua incepe curat.
+          FIX: score = 0 este acum AICI, nu in updateDeathScreen() unde
+          era executat la fiecare frame, corupand scorul inainte de orice save.
+        - Reinitializeaza jucatorul si reincarca nivelul in care a murit.
+
+        EXIT GAME (deathMenuSelection == 1):
+        - Opreste muzica, inchide conexiunea DB corect, iese din aplicatie.
     */
     private void executeDeathMenuAction() {
         if (deathMenuSelection == 0) {
+            /// TRY AGAIN — resetam scorul: noua sesiune incepe de la 0.
+            score = 0;
             isDeathScreen = false;
             player = new Player(0, 0);
             loadLevel(deathLevel);
-
             if (keyManager != null) {
                 keyManager.Clear();
+                lastUpState    = false;
+                lastDownState  = false;
+                lastEnterState = false;
             }
-
-            lastUpState = false;
-            lastDownState = false;
-            lastEnterState = false;
         } else {
+            /// EXIT GAME — oprim muzica, inchidem DB corect, iesim.
             AudioManager.getInstance().stopMusic();
+            try { DatabaseManager.getInstance().closeConnection(); } catch (Exception ignored) {}
             System.exit(0);
         }
     }
 
     // =========================================================================
-    // MENIU PAUZA
+    //  MENIU PAUZA
     // =========================================================================
 
     /*! \fn private void executePauseMenuAction()
-    \brief Executa actiunea selectata in meniul de pauza.
- */
+        \brief Executa actiunea selectata in meniul de pauza.
+
+        \details
+        Optiunile sunt: SETTINGS (0), SAVE GAME (1), RETURN TO MENU (2), EXIT (3).
+    */
     private void executePauseMenuAction() {
         /// Feedback audio scurt pentru selectia din meniul de pauza.
         AudioManager.getInstance().playSoundEffect("res/audio/button_click.wav");
@@ -682,29 +720,28 @@ public class Game implements Runnable {
                 Window owner = SwingUtilities.getWindowAncestor(wnd.GetCanvas());
                 SwingUtilities.invokeLater(() -> SettingsDialog.showSettings(owner));
             }
-
             case 1 -> saveCurrentGame(true);
-
             case 2 -> returnToMainMenu();
-
             case 3 -> {
                 AudioManager.getInstance().stopMusic();
+                try { DatabaseManager.getInstance().closeConnection(); } catch (Exception ignored) {}
                 System.exit(0);
             }
         }
     }
 
+    // =========================================================================
+    //  SALVARE
+    // =========================================================================
+
     /*! \fn private void appendDefeatedId(StringBuilder builder, String id)
-    \brief Adauga un ID de inamic invins in lista salvata.
+        \brief Adauga un ID de inamic invins in lista salvata.
 
-    \param builder StringBuilder-ul in care se construieste lista.
-    \param id ID-ul inamicului invins.
- */
+        \param builder StringBuilder-ul in care se construieste lista.
+        \param id      ID-ul inamicului invins (ex. "wolf", "npc0").
+    */
     private void appendDefeatedId(StringBuilder builder, String id) {
-        if (builder.length() > 0) {
-            builder.append(",");
-        }
-
+        if (builder.length() > 0) builder.append(",");
         builder.append(id);
     }
 
@@ -713,39 +750,24 @@ public class Game implements Runnable {
 
         \details
         Lista este salvata in fisierul .properties.
-        Exemple:
-        - wolf
-        - skeleton
-        - spider
-        - npc0, npc1 pentru gardienii regali din Great Hall.
+        Exemple: "wolf", "skeleton", "spider", "npc0,npc1".
 
         \return Lista de ID-uri separate prin virgula.
-     */
+    */
     private String getDefeatedEnemiesForSave() {
         StringBuilder defeated = new StringBuilder();
 
-        if (wolf != null && wolf.isDead()) {
-            appendDefeatedId(defeated, "wolf");
-        }
-
-        if (skeleton != null && skeleton.isDead()) {
-            appendDefeatedId(defeated, "skeleton");
-        }
-
-        if (spider != null && spider.isDead()) {
-            appendDefeatedId(defeated, "spider");
-        }
+        if (wolf     != null && wolf.isDead())     appendDefeatedId(defeated, "wolf");
+        if (skeleton != null && skeleton.isDead()) appendDefeatedId(defeated, "skeleton");
+        if (spider   != null && spider.isDead())   appendDefeatedId(defeated, "spider");
 
         /*
          * NPC-urile sunt salvate dupa pozitia lor in lista.
-         * In Great Hall, npc0, npc1, npc2, npc3 sunt cavalerii/gardienii regali.
+         * In Great Hall, npc0, npc1, npc2, npc3 sunt gardienii regali.
          */
         for (int i = 0; i < npcs.size(); i++) {
             NPC npc = npcs.get(i);
-
-            if (npc != null && npc.isDefeated()) {
-                appendDefeatedId(defeated, "npc" + i);
-            }
+            if (npc != null && npc.isDefeated()) appendDefeatedId(defeated, "npc" + i);
         }
 
         return defeated.toString();
@@ -757,80 +779,83 @@ public class Game implements Runnable {
         \details
         Dupa incarcarea nivelului, inamicii sunt creati din nou.
         Aceasta metoda ii marcheaza drept morti/invinsi pe cei care existau
-        in lista salvata.
-     */
+        in lista salvata, astfel incat nu mai apar pe harta.
+
+        \param state Starea incarcata din save file.
+    */
     private void applyDefeatedEnemies(SaveGameState state) {
-        if (state == null) {
-            return;
-        }
+        if (state == null) return;
 
-        if (wolf != null && state.isEnemyDefeated("wolf")) {
-            wolf.forceDead();
-        }
-
-        if (skeleton != null && state.isEnemyDefeated("skeleton")) {
-            skeleton.forceDead();
-        }
-
-        if (spider != null && state.isEnemyDefeated("spider")) {
-            spider.forceDead();
-        }
+        if (wolf     != null && state.isEnemyDefeated("wolf"))     wolf.forceDead();
+        if (skeleton != null && state.isEnemyDefeated("skeleton")) skeleton.forceDead();
+        if (spider   != null && state.isEnemyDefeated("spider"))   spider.forceDead();
 
         for (int i = 0; i < npcs.size(); i++) {
             NPC npc = npcs.get(i);
-
-            if (npc != null && state.isEnemyDefeated("npc" + i)) {
-                npc.forceDefeatedState();
-            }
+            if (npc != null && state.isEnemyDefeated("npc" + i)) npc.forceDefeatedState();
         }
     }
 
     /*! \fn private void saveCurrentGame(boolean showMessage)
-        \brief Salveaza progresul curent.
+        \brief Salveaza progresul curent in fisierul .properties SI in baza de date.
 
-        \param showMessage Daca este true, afiseaza mesaj de confirmare.
+        \details
+        Salveaza nivelul, pozitia, inamicii invinsi si scorul in SaveManager.
+        Simultan, insereaza scorul curent in baza de date SQLite prin
+        DatabaseManager, pentru a aparea in leaderboard.
+        Eroarea de DB este tratata non-fatal: jocul continua chiar daca
+        baza de date nu este disponibila.
+
+        \param showMessage Daca este true, afiseaza mesaj de confirmare Swing.
     */
-    /*! \fn private void saveCurrentGame(boolean showMessage)
-    \brief Salveaza progresul curent.
-
-    \param showMessage Daca este true, afiseaza mesaj de confirmare.
-*/
     private void saveCurrentGame(boolean showMessage) {
         try {
             if (player == null) {
                 throw new InvalidGameStateException(
-                        "Nu se poate salva jocul: playerul nu exista."
+                    "Nu se poate salva jocul: playerul nu exista."
                 );
             }
 
+            /// Salvam in fisierul .properties (save clasic).
             SaveManager.saveGame(
-                    currentLevel,
-                    player.GetX(),
-                    player.GetY(),
-                    getDefeatedEnemiesForSave()
+                currentLevel,
+                player.GetX(),
+                player.GetY(),
+                getDefeatedEnemiesForSave(),
+                score
             );
 
-            /// Redam un efect sonor scurt pentru salvare.
+            /// Salvam scorul si in baza de date SQLite pentru leaderboard.
+            try {
+                PlayerProfile profile = ProfileManager.getActive();
+                String name = (profile != null) ? profile.getName() : "Anonim";
+                DatabaseManager.getInstance().insertScore(name, score, currentLevel);
+                System.out.println("DB: scor salvat — " + name + " | " + score + " pts | nivel " + currentLevel);
+            } catch (DatabaseException dbEx) {
+                /// Eroare non-fatala: jocul continua chiar daca DB nu e disponibil.
+                System.out.println("DB: eroare la salvarea scorului — " + dbEx.getMessage());
+            }
+
+            /// Redam un efect sonor scurt pentru confirmare vizuala a salvarii.
             AudioManager.getInstance().playSoundEffect("res/audio/save_theme.wav");
 
             if (showMessage) {
                 SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
-                        null,
-                        "Jocul a fost salvat cu succes.",
-                        "Save Game",
-                        JOptionPane.INFORMATION_MESSAGE
+                    null,
+                    "Jocul a fost salvat cu succes.",
+                    "Save Game",
+                    JOptionPane.INFORMATION_MESSAGE
                 ));
             }
 
         } catch (InvalidGameStateException e) {
             System.out.println(e.getMessage());
-
             if (showMessage) {
                 SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
-                        null,
-                        e.getMessage(),
-                        "Save Game Error",
-                        JOptionPane.ERROR_MESSAGE
+                    null,
+                    e.getMessage(),
+                    "Save Game Error",
+                    JOptionPane.ERROR_MESSAGE
                 ));
             }
         }
@@ -841,7 +866,7 @@ public class Game implements Runnable {
     */
     private void returnToMainMenu() {
         /*
-         * Oprim muzica nivelului / battle inainte de revenirea la meniu.
+         * Oprim muzica nivelului/battle inainte de revenirea la meniu.
          * MenuWindow va porni din nou menu_theme.wav in constructor.
          */
         AudioManager.getInstance().stopMusic();
@@ -849,27 +874,28 @@ public class Game implements Runnable {
         runState = false;
     }
 
-    /*! \fn private void drawCinematicOverlay(Graphics2D g2d)
-    \brief Deseneaza un efect vizual cinematic peste joc.
+    // =========================================================================
+    //  DRAW
+    // =========================================================================
 
-    \details
-    Este activat din Settings prin GameSettings.cinematicMode.
-    Nu afecteaza logica jocului, doar atmosfera vizuala.
- */
+    /*! \fn private void drawCinematicOverlay(Graphics2D g2d)
+        \brief Deseneaza un efect vizual cinematic peste joc.
+
+        \details
+        Activat din Settings prin GameSettings.cinematicMode.
+        Nu afecteaza logica jocului, doar atmosfera vizuala.
+        Adauga doua benzi negre (sus si jos) si o umbra subtila.
+    */
     private void drawCinematicOverlay(Graphics2D g2d) {
-        /// Umbra subtila peste scena.
+        /// Umbra subtila peste scena pentru adancime vizuala.
         g2d.setColor(new Color(0, 0, 0, 35));
         g2d.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
 
-        /// Benzi cinematice sus si jos.
+        /// Benzi cinematice sus si jos (stilul letterbox).
         g2d.setColor(new Color(0, 0, 0, 170));
-        g2d.fillRect(0, 0, LOGICALWIDTH, 42);
+        g2d.fillRect(0, 0,                  LOGICALWIDTH, 42);
         g2d.fillRect(0, LOGICALHEIGHT - 42, LOGICALWIDTH, 42);
     }
-    // =========================================================================
-    // DRAW
-    // =========================================================================
-
 
     /*! \fn private void Draw()
         \brief Randeaza cadrul curent al jocului.
@@ -879,19 +905,18 @@ public class Game implements Runnable {
         1. harta de baza,
         2. inamicii,
         3. jucatorul,
-        4. foreground-ul,
+        4. foreground-ul hartii,
         5. barele HP ale inamicilor,
         6. meniul de pauza,
         7. overlay-ul de debug,
-        8. HUD-ul jucatorului.
+        8. HUD-ul jucatorului (scor + bara HP),
+        9. ecranul de moarte (daca e activ).
 
-        HUD-ul este desenat ultimul pentru a ramane permanent deasupra copacilor
-        si a elementelor de foreground.
+        HUD-ul este desenat ultimul pentru a ramane mereu deasupra copacilor
+        si elementelor de foreground.
     */
     private void Draw() {
-        if (wnd == null || wnd.GetCanvas() == null || !wnd.GetCanvas().isDisplayable()) {
-            return;
-        }
+        if (wnd == null || wnd.GetCanvas() == null || !wnd.GetCanvas().isDisplayable()) return;
 
         bs = wnd.GetCanvas().getBufferStrategy();
         if (bs == null) {
@@ -908,8 +933,8 @@ public class Game implements Runnable {
         Graphics2D g2d = (Graphics2D) g;
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        /// Scalare din rezolutia logica in rezolutia reala a ferestrei.
-        double scaleX = (double) wnd.GetWndWidth() / LOGICALWIDTH;
+        /// Scalare din rezolutia logica (800x600) in rezolutia reala a ferestrei.
+        double scaleX = (double) wnd.GetWndWidth()  / LOGICALWIDTH;
         double scaleY = (double) wnd.GetWndHeight() / LOGICALHEIGHT;
         g2d.scale(scaleX, scaleY);
 
@@ -918,85 +943,58 @@ public class Game implements Runnable {
         g.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
 
         /// Offset pentru centrare atunci cand harta este mai mica decat viewport-ul logic.
-        int offsetX = 0;
-        int offsetY = 0;
+        int offsetX = 0, offsetY = 0;
         if (map != null) {
-            if (map.getPixelWidth() < LOGICALWIDTH) {
-                offsetX = (LOGICALWIDTH - map.getPixelWidth()) / 2;
-            }
-            if (map.getPixelHeight() < LOGICALHEIGHT) {
-                offsetY = (LOGICALHEIGHT - map.getPixelHeight()) / 2;
-            }
+            if (map.getPixelWidth()  < LOGICALWIDTH)  offsetX = (LOGICALWIDTH  - map.getPixelWidth())  / 2;
+            if (map.getPixelHeight() < LOGICALHEIGHT) offsetY = (LOGICALHEIGHT - map.getPixelHeight()) / 2;
         }
 
         /// 1. Harta de baza.
-        if (map != null && camera != null) {
+        if (map != null && camera != null)
             map.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-        }
 
         /// 2. Inamicii.
-        if (wolf != null && camera != null) {
-            wolf.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-        }
-        if (skeleton != null && camera != null) {
-            skeleton.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-        }
-        if (spider != null && camera != null) {
-            spider.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-        }
-
+        if (wolf     != null && camera != null) wolf.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        if (skeleton != null && camera != null) skeleton.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        if (spider   != null && camera != null) spider.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         if (camera != null) {
-            for (NPC npc : npcs) {
-                npc.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-            }
+            for (NPC npc : npcs) npc.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
 
         /// 3. Jucatorul.
-        if (player != null && camera != null) {
+        if (player != null && camera != null)
             player.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-        }
 
-        /// 4. Foreground-ul hartii.
-        if (map != null && camera != null) {
+        /// 4. Foreground-ul hartii (copaci, acoperisuri etc.) — desenat peste personaje.
+        if (map != null && camera != null)
             map.DrawForeground(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-        }
 
-        /*
-         * Efect vizual cinematic activat din Settings.
-         * Nu il afisam peste debug, ca sa nu incurce verificarea coliziunilor.
-         */
+        /// Efect vizual cinematic (benzi + umbra). Nu se afiseaza peste debug.
         if (GameSettings.cinematicMode && !Game.showHitboxes) {
             drawCinematicOverlay(g2d);
         }
 
-        /// 5. Barele de viata ale inamicilor, desenate peste foreground.
+        /// 5. Barele de viata ale inamicilor, desenate peste foreground pentru vizibilitate.
         if (camera != null) {
-            if (wolf != null) {
-                wolf.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-            }
-            if (skeleton != null) {
-                skeleton.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-            }
-            if (spider != null) {
-                spider.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-            }
+            if (wolf     != null) wolf.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            if (skeleton != null) skeleton.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            if (spider   != null) spider.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
 
-        /// 6. Meniul de pauza.
+        /// 6. Meniul de pauza (overlay negru semitransparent + optiuni).
         if (isPaused) {
             g2d.setColor(new Color(0, 0, 0, 180));
             g2d.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
 
-            String[] options = {"SETTINGS", "SAVE GAME", "RETURN TO MENU", "EXIT"};
-            Font font = new Font("Serif", Font.BOLD, 36);
-            g2d.setFont(font);
-            FontMetrics fm = g2d.getFontMetrics(font);
-            int startY = 250;
+            String[] options   = {"SETTINGS", "SAVE GAME", "RETURN TO MENU", "EXIT"};
+            Font     pauseFont = new Font("Serif", Font.BOLD, 36);
+            g2d.setFont(pauseFont);
+            FontMetrics fm = g2d.getFontMetrics(pauseFont);
+            int startPauseY = 250;
 
             for (int i = 0; i < options.length; i++) {
-                int tw = fm.stringWidth(options[i]);
-                int x = (LOGICALWIDTH - tw) / 2;
-                int y = startY + i * 70;
+                int x = (LOGICALWIDTH - fm.stringWidth(options[i])) / 2;
+                int y = startPauseY + i * 70;
 
                 if (i == pauseMenuSelection) {
                     g2d.setColor(new Color(218, 165, 32));
@@ -1009,7 +1007,7 @@ public class Game implements Runnable {
             }
         }
 
-        /// 7. Overlay debug.
+        /// 7. Overlay debug: FPS + mesaj "Mod Debug: ON".
         if (showHitboxes) {
             g2d.setColor(Color.YELLOW);
             g2d.setFont(new Font("Consolas", Font.BOLD, 20));
@@ -1020,57 +1018,73 @@ public class Game implements Runnable {
             g2d.drawString("Mod Debug: ON", 15, 50);
         }
 
-        /// 8. HUD-ul jucatorului se deseneaza ultimul, ca sa fie mereu vizibil.
+        /// 8. HUD-ul jucatorului: bara HP + scor curent (desenat ultimul — mereu vizibil).
         if (player != null && !player.isDead()) {
-            int hudX = 20;
-            int hudY = LOGICALHEIGHT - 30;
-            int hudW = 150;
-            int hudH = 12;
+            int   hudX  = 20;
+            int   hudY  = LOGICALHEIGHT - 30;
+            int   hudW  = 150;
+            int   hudH  = 12;
             float ratio = (float) player.getCurrentHp() / player.getMaxHp();
 
+            /// Fundal bara HP.
             g2d.setColor(new Color(20, 20, 20, 200));
             g2d.fillRoundRect(hudX - 2, hudY - 2, hudW + 4, hudH + 4, 6, 6);
 
+            /// Fundal rosu inchis (hp pierdut).
             g2d.setColor(new Color(100, 10, 10, 220));
             g2d.fillRoundRect(hudX, hudY, hudW, hudH, 4, 4);
 
+            /// Bara HP colorata: verde > 60%, galben > 30%, rosu <= 30%.
             Color hudColor = ratio > 0.6f
-                    ? new Color(50, 200, 50)
-                    : ratio > 0.3f
+                ? new Color(50,  200, 50)
+                : ratio > 0.3f
                     ? new Color(220, 190, 20)
-                    : new Color(210, 40, 40);
+                    : new Color(210, 40,  40);
 
             g2d.setColor(hudColor);
             g2d.fillRoundRect(hudX, hudY, (int) (hudW * ratio), hudH, 4, 4);
 
+            /// Text HP: "HP: X / Y" la dreapta barei.
             g2d.setColor(Color.WHITE);
             g2d.setFont(new Font("Consolas", Font.BOLD, 11));
-            g2d.drawString(
-                    "HP: " + player.getCurrentHp() + " / " + player.getMaxHp(),
-                    hudX + hudW + 8,
-                    hudY + 10
-            );
+            g2d.drawString("HP: " + player.getCurrentHp() + " / " + player.getMaxHp(),
+                hudX + hudW + 8, hudY + 10);
         }
 
+        /// Scorul curent in coltul dreapta-sus al ecranului.
+        g2d.setColor(Color.WHITE);
+        g2d.setFont(new Font("Consolas", Font.BOLD, 14));
+        g2d.drawString("SCORE: " + score, LOGICALWIDTH - 155, 25);
+
+        /// 9. Ecranul de moarte (YOU DIED) + scorul final al sesiunii terminate.
         if (isDeathScreen) {
             drawDeathScreen(g2d);
+
+            Font scoreFont = new Font("Serif", Font.BOLD, 28);
+            g2d.setFont(scoreFont);
+            g2d.setColor(new Color(180, 180, 190));
+            String scoreText = "SCOR FINAL: " + score;
+            FontMetrics sm = g2d.getFontMetrics(scoreFont);
+            g2d.drawString(scoreText, (LOGICALWIDTH - sm.stringWidth(scoreText)) / 2, 285);
         }
 
-        if (runState && wnd.GetCanvas().isDisplayable()) {
-            bs.show();
-        }
+        if (runState && wnd.GetCanvas().isDisplayable()) bs.show();
         g.dispose();
     }
 
     /*! \fn private void drawDeathScreen(Graphics2D g2d)
-        \brief Deseneaza fereastra neagra de moarte peste joc.
+        \brief Deseneaza ecranul negru de moarte cu optiunile TRY AGAIN / EXIT GAME.
+
+        \param g2d Contextul grafic 2D curent.
     */
     private void drawDeathScreen(Graphics2D g2d) {
+        /// Fundal negru complet.
         g2d.setColor(Color.BLACK);
         g2d.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
 
-        String title = "YOU DIED";
-        Font titleFont = new Font("Serif", Font.BOLD, 72);
+        /// Titlul "YOU DIED" cu drop shadow rosu.
+        String title     = "YOU DIED";
+        Font   titleFont = new Font("Serif", Font.BOLD, 72);
         g2d.setFont(titleFont);
         FontMetrics titleMetrics = g2d.getFontMetrics(titleFont);
         int titleX = (LOGICALWIDTH - titleMetrics.stringWidth(title)) / 2;
@@ -1083,22 +1097,21 @@ public class Game implements Runnable {
 
         int startY = 330;
 
+        /// Subtitlul optional (ex. "BAD ENTRANCE") in auriu sub titlu.
         if (deathSubtitle != null && !deathSubtitle.isEmpty()) {
-            Font subtitleFont = new Font("Serif", Font.BOLD, 34);
-            g2d.setFont(subtitleFont);
-            FontMetrics subtitleMetrics = g2d.getFontMetrics(subtitleFont);
-
-            int subtitleX = (LOGICALWIDTH - subtitleMetrics.stringWidth(deathSubtitle)) / 2;
-            int subtitleY = titleY + 52;
-
+            Font        subFont    = new Font("Serif", Font.BOLD, 34);
+            g2d.setFont(subFont);
+            FontMetrics subMetrics = g2d.getFontMetrics(subFont);
+            int subX = (LOGICALWIDTH - subMetrics.stringWidth(deathSubtitle)) / 2;
+            int subY = titleY + 52;
             g2d.setColor(new Color(218, 165, 32));
-            g2d.drawString(deathSubtitle, subtitleX, subtitleY);
-
+            g2d.drawString(deathSubtitle, subX, subY);
             startY = 370;
         }
 
-        String[] options = {"TRY AGAIN", "EXIT GAME"};
-        Font optionFont = new Font("Serif", Font.BOLD, 34);
+        /// Optiunile meniului de moarte: TRY AGAIN / EXIT GAME.
+        String[] options    = {"TRY AGAIN", "EXIT GAME"};
+        Font     optionFont = new Font("Serif", Font.BOLD, 34);
         g2d.setFont(optionFont);
         FontMetrics optionMetrics = g2d.getFontMetrics(optionFont);
 
@@ -1110,7 +1123,6 @@ public class Game implements Runnable {
             } else {
                 g2d.setColor(new Color(170, 170, 180));
             }
-
             int x = (LOGICALWIDTH - optionMetrics.stringWidth(text)) / 2;
             int y = startY + i * 66;
             g2d.drawString(text, x, y);
@@ -1118,7 +1130,7 @@ public class Game implements Runnable {
     }
 
     // =========================================================================
-    // NIVELURI
+    //  NIVELURI
     // =========================================================================
 
     /*! \fn private void setPlayerSpawn(int tileCol, int tileRow)
@@ -1128,89 +1140,67 @@ public class Game implements Runnable {
         \param tileRow Linia tile-ului de spawn.
     */
     private void setPlayerSpawn(int tileCol, int tileRow) {
-        if (player == null) {
-            return;
-        }
-
-        float spawnX = tileCol * Tile.TILE_WIDTH + Tile.TILE_WIDTH / 2.0f - player.GetWidth() / 2.0f;
+        if (player == null) return;
+        float spawnX = tileCol * Tile.TILE_WIDTH  + Tile.TILE_WIDTH  / 2.0f - player.GetWidth()  / 2.0f;
         float spawnY = tileRow * Tile.TILE_HEIGHT + Tile.TILE_HEIGHT / 2.0f - player.GetHeight() / 2.0f;
-
         player.setPosition(spawnX, spawnY);
-
-        if (camera != null && map != null) {
-            camera.CenterOnPlayer(player, map);
-        }
-        if (keyManager != null) {
-            keyManager.Clear();
-        }
+        if (camera != null && map != null) camera.CenterOnPlayer(player, map);
+        if (keyManager != null) keyManager.Clear();
     }
 
     /*! \fn private void loadLevel(int level)
         \brief Incarca nivelul specificat si fisierele sale vizuale/logice.
 
         \details
-        Atentie: aici sunt folosite exact numele de fisiere pe care le-ai atasat
-        din folderul `maps`, inclusiv extensia `.png` pentru imaginile de baza
-        si foreground.
+        Reinitializeaza toti inamicii si NPC-urile pentru nivelul nou.
+        Porneste muzica potrivita prin updateLevelMusic().
+        Scorul NU este resetat aici — resetul se face exclusiv in
+        executeDeathMenuAction() la TRY AGAIN.
 
-        \param level Nivelul care trebuie incarcat.
+        \param level Nivelul care trebuie incarcat (1-4).
     */
     private void loadLevel(int level) {
         currentLevel = level;
-        wolf = null;
-        skeleton = null;
-        spider = null;
+        wolf         = null;
+        skeleton     = null;
+        spider       = null;
         npcs.clear();
 
-        if (player == null) {
-            player = new Player(0, 0);
-        }
+        if (player == null) player = new Player(0, 0);
 
         if (level == 1) {
             map = new Map(
-                    "res/maps/level1_base.png",
-                    "res/maps/level1_foreground.png",
-                    "res/maps/harta_primul_nivel.tmx"
+                "res/maps/level1_base.png",
+                "res/maps/level1_foreground.png",
+                "res/maps/harta_primul_nivel.tmx"
             );
             setPlayerSpawn(10, 14);
-            wolf = EnemyFactory.createWolf(
-                    15 * Tile.TILE_WIDTH,
-                    14 * Tile.TILE_HEIGHT,
-                    player
-            );
-            npcs.add(new NPC(11 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_spear_small.png"));
-            npcs.add(new NPC(15 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_shield_small.png"));
+            wolf = EnemyFactory.createWolf(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
+            /// Garzi la poarta satului in nivelul 1.
+            npcs.add(new NPC(11 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD,   "/textures/npc_village_gate_guard_spear_small.png"));
+            npcs.add(new NPC(15 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD,   "/textures/npc_village_gate_guard_shield_small.png"));
 
         } else if (level == 2) {
             map = new Map(
-                    "res/maps/level2_base.png",
-                    "res/maps/level2_foreground.png",
-                    "res/maps/harta_nivel2_dungeon.tmx"
+                "res/maps/level2_base.png",
+                "res/maps/level2_foreground.png",
+                "res/maps/harta_nivel2_dungeon.tmx"
             );
             setPlayerSpawn(19, 24);
-            skeleton = EnemyFactory.createSkeleton(
-                    11 * Tile.TILE_WIDTH,
-                    13 * Tile.TILE_HEIGHT,
-                    player
-            );
+            skeleton = EnemyFactory.createSkeleton(11 * Tile.TILE_WIDTH, 13 * Tile.TILE_HEIGHT, player);
+            spider   = EnemyFactory.createSpider  (29 * Tile.TILE_WIDTH, 19 * Tile.TILE_HEIGHT, player);
 
-            spider = EnemyFactory.createSpider(
-                    29 * Tile.TILE_WIDTH,
-                    19 * Tile.TILE_HEIGHT,
-                    player
-            );
         } else if (level == 3) {
             map = new Map(
-                    "res/maps/level3_village_base.png",
-                    "res/maps/level3_village_foreground.png",
-                    "res/maps/harta_nivel3_village.tmx"
+                "res/maps/level3_village_base.png",
+                "res/maps/level3_village_foreground.png",
+                "res/maps/harta_nivel3_village.tmx"
             );
             setPlayerSpawn(24, 31);
-            // Garzi la poarta castelului
-            npcs.add(new NPC(20 * Tile.TILE_WIDTH, 7 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_spear_small.png"));
-            npcs.add(new NPC(28 * Tile.TILE_WIDTH, 7 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_shield_small.png"));
-
-            // Sateni prin sat
+            /// Garzi la poarta castelului.
+            npcs.add(new NPC(20 * Tile.TILE_WIDTH,  7 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD,    "/textures/npc_village_gate_guard_spear_small.png"));
+            npcs.add(new NPC(28 * Tile.TILE_WIDTH,  7 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD,    "/textures/npc_village_gate_guard_shield_small.png"));
+            /// Sateni prin sat.
             npcs.add(new NPC(17 * Tile.TILE_WIDTH, 24 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_blacksmith_small.png"));
             npcs.add(new NPC(33 * Tile.TILE_WIDTH, 25 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_peasant_woman_small.png"));
             npcs.add(new NPC(12 * Tile.TILE_WIDTH, 18 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_elder_lantern_small.png"));
@@ -1218,14 +1208,15 @@ public class Game implements Runnable {
 
         } else if (level == 4) {
             map = new Map(
-                    "res/maps/level3_base.png",
-                    "res/maps/level3_foreground.png",
-                    "res/maps/harta_nivel3_the_great_hall.tmx"
+                "res/maps/level3_base.png",
+                "res/maps/level3_foreground.png",
+                "res/maps/harta_nivel3_the_great_hall.tmx"
             );
             setPlayerSpawn(9, 13);
-            npcs.add(new NPC(6 * Tile.TILE_WIDTH, 10 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
+            /// Patru garzi regale in Great Hall.
+            npcs.add(new NPC( 6 * Tile.TILE_WIDTH, 10 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
             npcs.add(new NPC(13 * Tile.TILE_WIDTH, 10 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
-            npcs.add(new NPC(7 * Tile.TILE_WIDTH, 12 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
+            npcs.add(new NPC( 7 * Tile.TILE_WIDTH, 12 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
             npcs.add(new NPC(12 * Tile.TILE_WIDTH, 12 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
         }
 
@@ -1233,53 +1224,55 @@ public class Game implements Runnable {
 
         /*
          * Dupa incarcarea nivelului, pornim muzica potrivita.
-         * Astfel, cand trecem Forest -> Dungeon -> Village -> Great Hall,
-         * soundtrack-ul se schimba automat.
+         * Forest -> Dungeon -> Village -> Great Hall: soundtrack-ul se schimba automat.
          */
         updateLevelMusic();
     }
 
+    /*! \fn private boolean isBadEntranceAttempt()
+        \brief Detecteaza tentativele de intrare ilegala in zona restricionata de pe nivelul 1.
 
+        \return true daca jucatorul incearca sa treaca prin zona interzisa.
+    */
     private boolean isBadEntranceAttempt() {
-        if (currentLevel != 1 || player == null) {
-            return false;
-        }
-
+        if (currentLevel != 1 || player == null) return false;
         int tileCol = (int) (player.GetFeetCenterX() / Tile.TILE_WIDTH);
         int tileRow = (int) (player.GetFeetBottomY() / Tile.TILE_HEIGHT);
-
         return tileRow <= 3 && tileCol >= 11 && tileCol <= 15;
     }
 
     /*! \fn private void checkLevelTransition()
-        \brief Verifica daca jucatorul a ajuns intr-o zona de tranzitie.
+        \brief Verifica daca jucatorul a ajuns intr-o zona de tranzitie si incarca nivelul urmator.
+
+        \details
+        La fiecare tranzitie, progresul este salvat automat (fara mesaj de confirmare).
+        Zona de tranzitie este definita prin tile-uri speciale in fisierul TMX al hartii.
+        Scorul este pastrat intre niveluri — nu se reseteaza la tranzitie.
     */
     private void checkLevelTransition() {
-        if (transitionCooldown > 0 || player == null || map == null) {
-            return;
-        }
+        if (transitionCooldown > 0 || player == null || map == null) return;
 
         int px = (int) player.GetFeetCenterX();
         int py = (int) player.GetFeetBottomY();
 
         if (currentLevel == 1) {
-            if (map.isTransitionAtPixel(px, py)
-                    || map.isTransitionAtPixel(px - 8, py)
-                    || map.isTransitionAtPixel(px + 8, py)) {
+            if (map.isTransitionAtPixel(px, py) ||
+                map.isTransitionAtPixel(px - 8, py) ||
+                map.isTransitionAtPixel(px + 8, py)) {
                 loadLevel(2);
                 saveCurrentGame(false);
             }
         } else if (currentLevel == 2) {
-            if (map.isTransitionAtPixel(px, py)
-                    || map.isTransitionAtPixel(px - 8, py)
-                    || map.isTransitionAtPixel(px + 8, py)) {
+            if (map.isTransitionAtPixel(px, py) ||
+                map.isTransitionAtPixel(px - 8, py) ||
+                map.isTransitionAtPixel(px + 8, py)) {
                 loadLevel(3);
                 saveCurrentGame(false);
             }
         } else if (currentLevel == 3) {
-            if (map.isTransitionAtPixel(px, py)
-                    || map.isTransitionAtPixel(px - 8, py)
-                    || map.isTransitionAtPixel(px + 8, py)) {
+            if (map.isTransitionAtPixel(px, py) ||
+                map.isTransitionAtPixel(px - 8, py) ||
+                map.isTransitionAtPixel(px + 8, py)) {
                 loadLevel(4);
                 saveCurrentGame(false);
             }

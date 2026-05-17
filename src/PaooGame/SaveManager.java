@@ -9,18 +9,19 @@ import java.util.Properties;
     \brief Gestioneaza salvarea si incarcarea progresului jocului.
 
     \details
-    Versiunea aceasta salveaza progresul separat pentru fiecare profil de jucator.
-    Astfel, fiecare jucator are propriul fisier de save in folderul res/saves.
+    Salveaza progresul separat pentru fiecare profil de jucator.
+    Fiecare jucator are propriul fisier de save in folderul res/saves:
 
-    Exemplu:
     - res/saves/savegame_mirch.properties
     - res/saves/savegame_mario.properties
 
-    Problema veche era ca toate profilurile foloseau acelasi fisier:
-    res/saves/savegame.properties
-
-    Din cauza asta, cand existau mai multi jucatori, progresul se suprascria
-    sau se incarca progresul gresit.
+    Campurile salvate:
+    - playerName      — numele profilului activ
+    - level           — nivelul curent
+    - playerX         — coordonata X a jucatorului
+    - playerY         — coordonata Y a jucatorului
+    - defeatedEnemies — inamicii invinsi, separati prin virgula
+    - score           — scorul acumulat pana la salvare
  */
 public class SaveManager {
 
@@ -31,7 +32,7 @@ public class SaveManager {
     private static final String LEGACY_SAVE_FILE = SAVE_FOLDER + "/savegame.properties";
 
     // =========================================================================
-    //  UTILITARE PENTRU FISIERUL DE SAVE
+    //  UTILITARE
     // =========================================================================
 
     /*! \fn private static String sanitizeProfileName(String name)
@@ -39,17 +40,13 @@ public class SaveManager {
 
         \details
         Inlocuieste caracterele care nu sunt litere, cifre, underscore sau cratima.
-        De exemplu:
-        "Ana Maria" devine "Ana_Maria".
+        Exemplu: "Ana Maria" devine "Ana_Maria".
 
         \param name Numele profilului.
-        \return Numele curatat pentru fisier.
+        \return Numele curatat pentru utilizare in path de fisier.
      */
     private static String sanitizeProfileName(String name) {
-        if (name == null || name.trim().isEmpty()) {
-            return "default";
-        }
-
+        if (name == null || name.trim().isEmpty()) return "default";
         return name.trim().replaceAll("[^a-zA-Z0-9_\\-]", "_");
     }
 
@@ -58,16 +55,13 @@ public class SaveManager {
 
         \details
         Daca exista un profil activ, salvarea este per-jucator.
-        Daca nu exista profil activ, folosim fisierul vechi de compatibilitate.
+        Daca nu exista profil activ, se foloseste fisierul legacy de compatibilitate.
 
-        \return Fisierul in care se salveaza / din care se incarca progresul.
+        \return Fisierul de save corespunzator profilului activ.
      */
     private static File getSaveFileForActiveProfile() {
         PlayerProfile activeProfile = ProfileManager.getActive();
-
-        if (activeProfile == null) {
-            return new File(LEGACY_SAVE_FILE);
-        }
+        if (activeProfile == null) return new File(LEGACY_SAVE_FILE);
 
         String safeName = sanitizeProfileName(activeProfile.getName());
         return new File(SAVE_FOLDER + "/savegame_" + safeName + ".properties");
@@ -78,82 +72,77 @@ public class SaveManager {
     // =========================================================================
 
     /*! \fn public static void saveGame(int level, float playerX, float playerY)
-    \brief Salveaza nivelul curent si pozitia player-ului pentru profilul activ.
-
-    \details
-    Aceasta varianta pastreaza compatibilitatea cu apelurile mai vechi,
-    unde nu se trimitea lista de inamici invinsi.
- */
+        \brief Salveaza nivelul si pozitia jucatorului fara inamici si fara scor.
+        \details Apel de compatibilitate cu versiunile vechi ale proiectului.
+     */
     public static void saveGame(int level, float playerX, float playerY) {
-        saveGame(level, playerX, playerY, "");
+        saveGame(level, playerX, playerY, "", 0);
     }
 
     /*! \fn public static void saveGame(int level, float playerX, float playerY, String defeatedEnemies)
+        \brief Salveaza progresul fara scor.
+        \details Apel de compatibilitate pentru varianta fara sistem de scor.
+     */
+    public static void saveGame(int level, float playerX, float playerY,
+                                String defeatedEnemies) {
+        saveGame(level, playerX, playerY, defeatedEnemies, 0);
+    }
+
+    /*! \fn public static void saveGame(int level, float playerX, float playerY, String defeatedEnemies, int score)
         \brief Salveaza progresul complet al jocului pentru profilul activ.
 
         \details
-        Salveaza:
-        - nivelul curent;
-        - pozitia playerului;
-        - lista inamicilor invinsi in nivelul curent.
+        Salveaza: nivelul curent, pozitia playerului, inamicii invinsi si scorul.
 
-        \param level Nivelul curent.
-        \param playerX Pozitia X a jucatorului.
-        \param playerY Pozitia Y a jucatorului.
-        \param defeatedEnemies Lista de inamici invinsi, separati prin virgula.
+        \param level            Nivelul curent.
+        \param playerX          Pozitia X a jucatorului.
+        \param playerY          Pozitia Y a jucatorului.
+        \param defeatedEnemies  Lista inamicilor invinsi, separati prin virgula.
+        \param score            Scorul acumulat pana la salvare.
      */
-    public static void saveGame(int level, float playerX, float playerY, String defeatedEnemies) {
+    public static void saveGame(int level, float playerX, float playerY,
+                                String defeatedEnemies, int score) {
         try {
             File folder = new File(SAVE_FOLDER);
-
-            /// Daca folderul res/saves nu exista, il cream.
-            if (!folder.exists()) {
-                folder.mkdirs();
-            }
+            if (!folder.exists()) folder.mkdirs();
 
             PlayerProfile activeProfile = ProfileManager.getActive();
             File saveFile = getSaveFileForActiveProfile();
 
             Properties properties = new Properties();
 
-            /// Salvam si numele profilului, util pentru verificari/debug.
             properties.setProperty(
                     "playerName",
                     activeProfile != null ? activeProfile.getName() : "default"
             );
-
-            properties.setProperty("level", String.valueOf(level));
-            properties.setProperty("playerX", String.valueOf(playerX));
-            properties.setProperty("playerY", String.valueOf(playerY));
-
-            /*
-             * Salvam inamicii invinsi.
-             * Exemplu:
-             * defeatedEnemies=wolf,skeleton,npc0,npc1
-             */
-            properties.setProperty(
-                    "defeatedEnemies",
-                    defeatedEnemies != null ? defeatedEnemies : ""
-            );
+            properties.setProperty("level",           String.valueOf(level));
+            properties.setProperty("playerX",         String.valueOf(playerX));
+            properties.setProperty("playerY",         String.valueOf(playerY));
+            properties.setProperty("defeatedEnemies", defeatedEnemies != null ? defeatedEnemies : "");
+            properties.setProperty("score",           String.valueOf(score));
 
             try (FileOutputStream output = new FileOutputStream(saveFile)) {
                 properties.store(output, "Aethelgard Save Game");
             }
 
-            /*
-             * Actualizam si profilul activ.
-             * Astfel meniul stie ca jucatorul acesta are progres salvat.
-             */
+            /// Actualizam profilul activ cu nivelul si pozitia curenta.
             ProfileManager.saveProgress(level, playerX, playerY);
+
+            /// Actualizam best score-ul in profil daca scorul curent este mai mare.
+            if (activeProfile != null) {
+                activeProfile.setBestScore(score);
+                ProfileManager.saveActiveProfile();
+            }
 
             System.out.println("Joc salvat cu succes pentru profilul: "
                     + (activeProfile != null ? activeProfile.getName() : "default"));
 
         } catch (Exception e) {
-            System.out.println("Eroare la salvarea jocului!");
+            System.out.println("Eroare la salvare: " + e.getMessage());
             e.printStackTrace();
         }
     }
+
     // =========================================================================
     //  INCARCARE
     // =========================================================================
@@ -162,115 +151,65 @@ public class SaveManager {
         \brief Incarca progresul salvat pentru profilul activ.
 
         \details
-        Ordinea este:
-        1. Cauta fisierul individual al profilului activ.
-        2. Daca nu exista, foloseste progresul salvat in PlayerProfile.
-        3. Daca nu exista profil activ, incearca fisierul vechi savegame.properties.
+        Citeste fisierul .properties corespunzator profilului activ si
+        construieste un obiect SaveGameState cu toate datele restaurate,
+        inclusiv scorul si inamicii invinsi.
 
-        \return Starea salvata sau null daca nu exista salvare.
+        \return Obiectul SaveGameState cu datele salvate, sau null daca nu exista save.
      */
     public static SaveGameState loadGame() {
-        try {
-            PlayerProfile activeProfile = ProfileManager.getActive();
-            File saveFile = getSaveFileForActiveProfile();
+        File saveFile = getSaveFileForActiveProfile();
 
-            /// 1. Incarcam din fisierul individual al profilului activ.
-            if (saveFile.exists()) {
-                return readSaveFile(saveFile);
-            }
-
-            /*
-             * 2. Daca nu exista fisier individual, folosim datele din profil.
-             * Asta ajuta si pentru profilurile deja existente in profiles.dat.
-             */
-            if (activeProfile != null) {
-                boolean hasProgress =
-                        activeProfile.getLevel() > 1
-                        || activeProfile.getPlayerX() != 0f
-                        || activeProfile.getPlayerY() != 0f;
-
-                if (hasProgress) {
-                    return new SaveGameState(
-                            activeProfile.getLevel(),
-                            activeProfile.getPlayerX(),
-                            activeProfile.getPlayerY()
-                    );
-                }
-
-                /// Profil activ exista, dar nu are progres salvat.
-                return null;
-            }
-
-            /*
-             * 3. Compatibilitate veche:
-             * Folosim savegame.properties doar daca nu exista profil activ.
-             * Nu vrem sa incarcam din save-ul global cand un jucator este selectat.
-             */
-            File legacyFile = new File(LEGACY_SAVE_FILE);
-            if (legacyFile.exists()) {
-                return readSaveFile(legacyFile);
-            }
-
+        if (!saveFile.exists()) {
+            System.out.println("Nu exista save pentru profilul activ.");
             return null;
+        }
+
+        try (FileInputStream input = new FileInputStream(saveFile)) {
+            Properties properties = new Properties();
+            properties.load(input);
+
+            int    level           = Integer.parseInt(properties.getProperty("level",   "1"));
+            float  playerX         = Float.parseFloat(properties.getProperty("playerX", "0"));
+            float  playerY         = Float.parseFloat(properties.getProperty("playerY", "0"));
+            String defeatedEnemies = properties.getProperty("defeatedEnemies", "");
+
+            /// Compatibilitate cu save-uri vechi care nu aveau campul score.
+            int score = Integer.parseInt(properties.getProperty("score", "0"));
+
+            System.out.println("Joc incarcat: nivel=" + level
+                    + ", score=" + score
+                    + ", playerX=" + playerX + ", playerY=" + playerY);
+
+            return new SaveGameState(level, playerX, playerY, defeatedEnemies, score);
 
         } catch (Exception e) {
-            System.out.println("Eroare la incarcarea jocului!");
+            System.out.println("Eroare la incarcare: " + e.getMessage());
             e.printStackTrace();
             return null;
         }
     }
 
-    /*! \fn private static SaveGameState readSaveFile(File file)
-        \brief Citeste efectiv nivelul si pozitia dintr-un fisier .properties.
+    // =========================================================================
+    //  VERIFICARE / STERGERE
+    // =========================================================================
 
-        \param file Fisierul de save.
-        \return Obiectul SaveGameState citit din fisier.
+    /*! \fn public static boolean hasSave()
+        \brief Verifica daca exista un save pentru profilul activ.
+        \return true daca fisierul de save exista pe disc.
      */
-    private static SaveGameState readSaveFile(File file) throws Exception {
-        Properties properties = new Properties();
-
-        try (FileInputStream input = new FileInputStream(file)) {
-            properties.load(input);
-        }
-
-        int level = Integer.parseInt(properties.getProperty("level"));
-        float playerX = Float.parseFloat(properties.getProperty("playerX"));
-        float playerY = Float.parseFloat(properties.getProperty("playerY"));
-
-        String defeatedEnemies = properties.getProperty("defeatedEnemies", "");
-
-        return new SaveGameState(level, playerX, playerY, defeatedEnemies);
+    public static boolean hasSave() {
+        return getSaveFileForActiveProfile().exists();
     }
 
-    // =========================================================================
-    //  VERIFICARE SAVE
-    // =========================================================================
-
-    /*! \fn public static boolean hasSaveGame()
-        \brief Verifica daca profilul activ are o salvare.
-
-        \details
-        Verifica atat fisierul individual al profilului, cat si datele salvate
-        in PlayerProfile.
-
-        \return true daca exista salvare pentru jucatorul activ.
+    /*! \fn public static void deleteSave()
+        \brief Sterge fisierul de save al profilului activ.
      */
-    public static boolean hasSaveGame() {
-        PlayerProfile activeProfile = ProfileManager.getActive();
-
+    public static void deleteSave() {
         File saveFile = getSaveFileForActiveProfile();
         if (saveFile.exists()) {
-            return true;
+            saveFile.delete();
+            System.out.println("Save sters pentru profilul activ.");
         }
-
-        if (activeProfile != null) {
-            return activeProfile.getLevel() > 1
-                    || activeProfile.getPlayerX() != 0f
-                    || activeProfile.getPlayerY() != 0f;
-        }
-
-        File legacyFile = new File(LEGACY_SAVE_FILE);
-        return legacyFile.exists();
     }
 }
-

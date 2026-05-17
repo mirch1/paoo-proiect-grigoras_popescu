@@ -15,10 +15,11 @@ import java.awt.geom.Point2D;
     Contine:
     - Butonul PLAY: porneste un joc nou.
     - Butonul LOAD GAME: incarca jocul salvat al profilului activ.
+    - Butonul LEADERBOARD: deschide dialogul cu top 10 scoruri.
     - Butonul SCHIMBA JUCATOR: deschide ProfileSelectScreen.
     - Butonul EXIT: inchide aplicatia.
     - Butonul SETTINGS (dreapta-sus): deschide SettingsDialog.
-    - Eticheta cu numele si nivelul jucatorului activ (stanga-sus).
+    - Eticheta cu numele, nivelul si best score-ul jucatorului activ (stanga-sus).
     - Clasa interna MenuPanel: deseneaza fundalul animat (cer, stele, luna, munti).
 */
 public class MenuWindow extends JFrame {
@@ -100,7 +101,7 @@ public class MenuWindow extends JFrame {
         //  ETICHETA JUCATOR ACTIV (stanga-sus)
         // ---------------------------------------------------------------
 
-        /*! \brief Afiseaza numele si nivelul profilului activ in coltul stanga-sus.
+        /*! \brief Afiseaza numele, nivelul si best score-ul profilului activ in stanga-sus.
             \details Vizibila dupa selectarea unui profil in ProfileSelectScreen.
                      Permite jucatorului sa confirme rapid ce profil este activ
                      inainte de a porni jocul. Nu este afisata daca nu exista
@@ -108,11 +109,21 @@ public class MenuWindow extends JFrame {
         */
         PlayerProfile active = ProfileManager.activeProfile;
         if (active != null) {
+            /// Randul 1: nume si nivel.
             JLabel playerLabel = new JLabel("\u2694 " + active.getName() + " | Nivel " + active.getLevel());
             playerLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
             playerLabel.setForeground(new Color(200, 195, 170));
-            playerLabel.setBounds(20, 20, 360, 28);
+            playerLabel.setBounds(20, 20, 360, 24);
             panel.add(playerLabel);
+
+            /// Randul 2: best score — afisat doar daca jucatorul a obtinut cel putin un scor.
+            if (active.getBestScore() > 0) {
+                JLabel scoreLabel = new JLabel("\u2605 Best: " + active.getBestScore() + " pts");
+                scoreLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
+                scoreLabel.setForeground(new Color(218, 165, 32));
+                scoreLabel.setBounds(20, 46, 360, 20);
+                panel.add(scoreLabel);
+            }
         }
 
         // ---------------------------------------------------------------
@@ -166,7 +177,7 @@ public class MenuWindow extends JFrame {
             PlayerProfile activeProfile = ProfileManager.activeProfile;
 
             /// Verificam daca profilul activ are un joc salvat.
-            boolean hasSave = activeProfile != null && SaveManager.hasSaveGame();
+            boolean hasSave = activeProfile != null && SaveManager.hasSave();
 
             if (!hasSave) {
                 /// Nu exista salvare — informam jucatorul si nu facem nimic altceva.
@@ -195,24 +206,49 @@ public class MenuWindow extends JFrame {
         panel.add(loadButton);
 
         // ---------------------------------------------------------------
+        //  BUTON LEADERBOARD
+        // ---------------------------------------------------------------
+
+        /*! \brief Butonul pentru afisarea top 10 scoruri din baza de date.
+            \details Deschide LeaderboardDialog, un dialog modal stilizat care
+                     citeste datele prin DatabaseManager.getTopScores(10).
+                     Muzica de meniu continua sa ruleze in timp ce dialogul este deschis.
+        */
+        JButton leaderboardBtn = createMenuButton("LEADERBOARD");
+
+        /// Font usor mai mic pentru a incapea textul in latimea butonului standard.
+        leaderboardBtn.setFont(new Font("Serif", Font.BOLD, 15));
+
+        /// Randul 2 (dupa LOAD GAME).
+        leaderboardBtn.setBounds(centerX, startY + (buttonHeight + spacing) * 2, buttonWidth, buttonHeight);
+
+        leaderboardBtn.addActionListener(e -> {
+            /// Redam un efect scurt de click pentru feedback audio.
+            AudioManager.getInstance().playSoundEffect("res/audio/button_click.wav");
+
+            /// Deschide dialogul modal cu leaderboard-ul.
+            LeaderboardDialog.show(this);
+        });
+
+        panel.add(leaderboardBtn);
+
+        // ---------------------------------------------------------------
         //  BUTON SCHIMBA JUCATOR
         // ---------------------------------------------------------------
 
         /*! \brief Butonul pentru schimbarea profilului activ fara a iesi din aplicatie.
             \details Inchide MenuWindow si deschide ProfileSelectScreen, unde jucatorul
                      poate selecta un profil diferit sau crea unul nou prin NameEntryScreen.
-                     Pozitionat pe randul 2 (index 2), impingand EXIT pe randul 3.
         */
         JButton switchBtn = createMenuButton("SCHIMBA JUCATOR");
 
         /// Font usor mai mic pentru a incapea textul in latimea butonului standard.
         switchBtn.setFont(new Font("Serif", Font.BOLD, 15));
 
-        /// Randul 2 (dupa LOAD GAME).
-        switchBtn.setBounds(centerX, startY + (buttonHeight + spacing) * 2, buttonWidth, buttonHeight - 6);
+        /// Randul 3 (dupa LEADERBOARD).
+        switchBtn.setBounds(centerX, startY + (buttonHeight + spacing) * 3, buttonWidth, buttonHeight - 6);
 
         switchBtn.addActionListener(e -> {
-
             /// Redam un efect scurt de click pentru feedback audio.
             AudioManager.getInstance().playSoundEffect("res/audio/button_click.wav");
 
@@ -230,8 +266,8 @@ public class MenuWindow extends JFrame {
         /// Butonul pentru inchiderea completa a aplicatiei.
         JButton exitButton = createMenuButton("EXIT");
 
-        /// Randul 3 (mutat de pe randul 2 pentru a face loc butonului SCHIMBA JUCATOR).
-        exitButton.setBounds(centerX, startY + (buttonHeight + spacing) * 3, buttonWidth, buttonHeight - 8);
+        /// Randul 4 (mutat pentru a face loc LEADERBOARD si SCHIMBA JUCATOR).
+        exitButton.setBounds(centerX, startY + (buttonHeight + spacing) * 4, buttonWidth, buttonHeight - 8);
 
         /// La apasarea EXIT, aplicatia se inchide complet.
         exitButton.addActionListener(e -> {
@@ -496,4 +532,3 @@ public class MenuWindow extends JFrame {
         }
     }
 }
-

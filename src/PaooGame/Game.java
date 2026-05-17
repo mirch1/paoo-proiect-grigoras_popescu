@@ -10,6 +10,7 @@ import PaooGame.Tiles.Tile;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferStrategy;
+import PaooGame.Exceptions.InvalidGameStateException;
 
 /*! \class Game
     \brief Clasa principala a jocului.
@@ -650,8 +651,15 @@ public class Game implements Runnable {
         \param showMessage Daca este true, afiseaza mesaj de confirmare.
     */
     private void saveCurrentGame(boolean showMessage) {
-        if (player == null) {
-            return;
+        try {
+            if (player == null) {
+                throw new InvalidGameStateException("Nu se poate salva jocul: playerul nu exista.");
+            }
+
+            SaveManager.saveGame(currentLevel, player.GetX(), player.GetY());
+
+        } catch (InvalidGameStateException e) {
+            System.out.println(e.getMessage());
         }
 
         SaveManager.saveGame(currentLevel, player.GetX(), player.GetY());

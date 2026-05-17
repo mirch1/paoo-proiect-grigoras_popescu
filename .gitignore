@@ -1,4 +1,21 @@
+# Compiled output
 out/
-.idea/*.iml
+*.class
 
-paoo-proiect-grigoras_popescu-master.iml
+# IntelliJ IDEA
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/shelf/
+*.iml
+
+# Database (se generează la runtime)
+res/db/*.db
+
+# Save files (date personale)
+res/saves/
+profiles.dat
+
+# OS files
+.DS_Store
+Thumbs.db

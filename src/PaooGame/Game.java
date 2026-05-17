@@ -646,23 +646,20 @@ public class Game implements Runnable {
 
 
     /*! \fn private void saveCurrentGame(boolean showMessage)
-        \brief Salveaza progresul curent.
+    \brief Salveaza progresul curent.
 
-        \param showMessage Daca este true, afiseaza mesaj de confirmare.
-    */
-    private void saveCurrentGame(boolean showMessage) {
-        try {
-            if (player == null) {
-                throw new InvalidGameStateException("Nu se poate salva jocul: playerul nu exista.");
-            }
-
-            SaveManager.saveGame(currentLevel, player.GetX(), player.GetY());
-
-        } catch (InvalidGameStateException e) {
-            System.out.println(e.getMessage());
+    \param showMessage Daca este true, afiseaza mesaj de confirmare.
+*/
+private void saveCurrentGame(boolean showMessage) {
+    try {
+        if (player == null) {
+            throw new InvalidGameStateException(
+                    "Nu se poate salva jocul: playerul nu exista."
+            );
         }
 
         SaveManager.saveGame(currentLevel, player.GetX(), player.GetY());
+
         /// Redam un efect sonor scurt pentru salvare.
         AudioManager.getInstance().playSoundEffect("res/audio/save_theme.wav");
 
@@ -674,8 +671,21 @@ public class Game implements Runnable {
                     JOptionPane.INFORMATION_MESSAGE
             ));
         }
-    }
 
+    } catch (InvalidGameStateException e) {
+        System.out.println(e.getMessage());
+
+        if (showMessage) {
+            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                    null,
+                    e.getMessage(),
+                    "Save Game Error",
+                    JOptionPane.ERROR_MESSAGE
+            ));
+        }
+    }
+}
+    
     /*! \fn private void returnToMainMenu()
         \brief Cere revenirea in meniul principal si opreste jocul.
     */

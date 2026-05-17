@@ -133,6 +133,34 @@ public class NPC extends Enemy {
         return type == NPCType.ROYAL_GUARD && state != NPCState.DEFEATED;
     }
 
+    /*! \fn public boolean isDefeated()
+    \brief Verifica daca NPC-ul ostil este deja invins.
+ */
+    public boolean isDefeated() {
+        return state == NPCState.DEFEATED;
+    }
+
+    /*! \fn public void forceDefeatedState()
+        \brief Marcheaza NPC-ul ca fiind invins.
+
+        \details
+        Este folosita la Load Game pentru gardienii regali din Great Hall.
+        Spre deosebire de inamicii clasici, gardienii invinsi nu dispar complet,
+        ci raman in starea DEFEATED.
+     */
+    public void forceDefeatedState() {
+        currentHp = 0;
+        state = NPCState.DEFEATED;
+        defeatedTimer = 0;
+        speed = 0;
+
+        /*
+         * Lasam isDead pe false pentru ca NPC-ul invins sa poata fi desenat
+         * in starea ingenuncheata / defeated.
+         */
+        isDead = false;
+    }
+
     public boolean canDamagePlayer(Player player) {
         return type == NPCType.ROYAL_GUARD
                 && state == NPCState.ATTACK

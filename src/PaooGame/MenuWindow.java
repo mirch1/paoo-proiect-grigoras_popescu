@@ -130,8 +130,15 @@ public class MenuWindow extends JFrame {
                      astfel InitGame() va porni intotdeauna din Nivelul 1.
         */
         playButton.addActionListener(e -> {
+            /// Redam un efect scurt de click pentru feedback audio.
+            AudioManager.getInstance().playSoundEffect("res/audio/button_click.wav");
+
+            /// Oprim muzica de meniu inainte sa pornim jocul.
+            AudioManager.getInstance().stopMusic();
+
             /// Inchidem fereastra de meniu.
             dispose();
+
             /// Cream jocul nou si pornim bucla principala.
             Game paooGame = new Game("Aethelgard", screenWidth, screenHeight);
             paooGame.StartGame();
@@ -173,6 +180,12 @@ public class MenuWindow extends JFrame {
                 return;
             }
 
+            /// Redam un efect scurt de click pentru feedback audio.
+            AudioManager.getInstance().playSoundEffect("res/audio/button_click.wav");
+
+            /// Oprim muzica de meniu inainte sa pornim jocul incarcat.
+            AudioManager.getInstance().stopMusic();
+
             /// Exista salvare — inchidem meniul si pornim jocul cu restaurarea progresului.
             dispose();
             Game paooGame = new Game("Aethelgard", screenWidth, screenHeight, true);
@@ -199,6 +212,10 @@ public class MenuWindow extends JFrame {
         switchBtn.setBounds(centerX, startY + (buttonHeight + spacing) * 2, buttonWidth, buttonHeight - 6);
 
         switchBtn.addActionListener(e -> {
+
+            /// Redam un efect scurt de click pentru feedback audio.
+            AudioManager.getInstance().playSoundEffect("res/audio/button_click.wav");
+
             /// Inchidem meniul si deschidem ecranul de selectie profil.
             dispose();
             new ProfileSelectScreen().setVisible(true);
@@ -217,7 +234,13 @@ public class MenuWindow extends JFrame {
         exitButton.setBounds(centerX, startY + (buttonHeight + spacing) * 3, buttonWidth, buttonHeight - 8);
 
         /// La apasarea EXIT, aplicatia se inchide complet.
-        exitButton.addActionListener(e -> System.exit(0));
+        exitButton.addActionListener(e -> {
+            /// Oprim muzica inainte de inchiderea aplicatiei.
+            AudioManager.getInstance().stopMusic();
+
+            /// Inchidem complet aplicatia.
+            System.exit(0);
+        });
 
         panel.add(exitButton);
 
@@ -236,7 +259,13 @@ public class MenuWindow extends JFrame {
          * pentru a aparea centrat peste meniu si a bloca interactiunea
          * cu meniul cat timp setarile sunt deschise.
          */
-        settingsButton.addActionListener(e -> SettingsDialog.showSettings(this));
+        settingsButton.addActionListener(e -> {
+            /// Redam un efect scurt de click pentru feedback audio.
+            AudioManager.getInstance().playSoundEffect("res/audio/button_click.wav");
+
+            /// Deschidem dialogul de setari peste meniul principal.
+            SettingsDialog.showSettings(this);
+        });
 
         panel.add(settingsButton);
 
@@ -249,6 +278,14 @@ public class MenuWindow extends JFrame {
 
         /// Fortam recalcularea layout-ului dupa adaugarea tuturor componentelor.
         validate();
+
+        /*
+         * Pornim muzica de meniu.
+         *
+         * AudioManager verifica intern daca aceeasi melodie ruleaza deja,
+         * deci nu va reporni inutil soundtrack-ul daca revenim in meniu.
+         */
+        AudioManager.getInstance().playMusic("res/audio/menu_theme.wav");
     }
 
     // =========================================================================
@@ -459,3 +496,4 @@ public class MenuWindow extends JFrame {
         }
     }
 }
+

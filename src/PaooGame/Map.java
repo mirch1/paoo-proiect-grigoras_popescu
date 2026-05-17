@@ -16,7 +16,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.List;
-
+import PaooGame.Exceptions.MapLoadException;
 /*! \class Map
     \brief Gestioneaza incarcarea, logica de coliziune si randarea hartii.
  */
@@ -162,24 +162,79 @@ public class Map {
         return transitionData[row][col];
     }
 
+    /*! \fn private void loadVisualMap(String visualMapPath)
+    \brief Incarca imaginea principala a hartii exportate din Tiled.
+
+    \details
+    Daca imaginea nu poate fi incarcata, tratam eroarea prin MapLoadException,
+    dar o prindem local ca sa putem afisa clar problema in consola.
+ */
     private void loadVisualMap(String visualMapPath) {
         try {
-            visualMap = ImageIO.read(new File(visualMapPath));
+            File file = new File(visualMapPath);
+
+            if (!file.exists()) {
+                throw new MapLoadException("Imaginea hartii lipseste: " + visualMapPath);
+            }
+
+            visualMap = ImageIO.read(file);
+
+            if (visualMap == null) {
+                throw new MapLoadException("Fisierul hartii nu este o imagine valida: " + visualMapPath);
+            }
+
+        } catch (MapLoadException e) {
+            System.out.println(e.getMessage());
+            e.printStackTrace();
+
+            /*
+             * Foarte important:
+             * Nu lasam jocul sa crape, dar visualMap ramane null.
+             * In consola vom vedea exact ce fisier lipseste.
+             */
+            visualMap = null;
+
         } catch (Exception e) {
             System.out.println("Eroare la incarcarea imaginii hartii: " + visualMapPath);
             e.printStackTrace();
+            visualMap = null;
         }
     }
+    
 
+    /*! \fn private void loadForegroundMap(String foregroundMapPath)
+    \brief Incarca imaginea de foreground a hartii.
+
+    \details
+    Foreground-ul este optional. Daca lipseste, jocul continua fara el.
+ */
     private void loadForegroundMap(String foregroundMapPath) {
         try {
-            foregroundMap = ImageIO.read(new File(foregroundMapPath));
+            File file = new File(foregroundMapPath);
+
+            if (!file.exists()) {
+                System.out.println("Foreground lipsa, jocul continua fara el: " + foregroundMapPath);
+                foregroundMap = null;
+                return;
+            }
+
+            foregroundMap = ImageIO.read(file);
+
+            if (foregroundMap == null) {
+                throw new MapLoadException("Foreground-ul nu este o imagine valida: " + foregroundMapPath);
+            }
+
+        } catch (MapLoadException e) {
+            System.out.println(e.getMessage());
+            foregroundMap = null;
+
         } catch (Exception e) {
             System.out.println("Eroare la incarcarea foreground-ului: " + foregroundMapPath);
             e.printStackTrace();
+            foregroundMap = null;
         }
     }
-
+    
     public void DrawForeground(Graphics g, int cameraX, int cameraY, int offsetX, int offsetY) {
         if (useVisualMap && foregroundMap != null) {
             g.drawImage(foregroundMap, offsetX - cameraX, offsetY - cameraY, null);
@@ -189,9 +244,19 @@ public class Map {
     /*! \fn private void loadLogicFromTmx(String tmxPath)
         \brief Citeste din fisierul .tmx layer-ele Collisions si tranzitiile.
      */
+    /*! \fn private void loadLogicFromTmx(String tmxPath)
+    \brief Citeste din fisierul .tmx layer-ele Collisions si tranzitiile.
+
+    \details
+    Daca TMX-ul are probleme, afisam eroarea clar, dar nu blocam complet jocul.
+ */
     private void loadLogicFromTmx(String tmxPath) {
         try {
             File file = new File(tmxPath);
+
+            if (!file.exists()) {
+                throw new MapLoadException("Fisierul TMX lipseste: " + tmxPath);
+            }
 
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             DocumentBuilder builder = factory.newDocumentBuilder();
@@ -211,24 +276,46 @@ public class Map {
             for (int i = 0; i < layers.getLength(); i++) {
                 Element layer = (Element) layers.item(i);
                 String layerName = layer.getAttribute("name");
+                String normalizedName = layerName.trim().toLowerCase();
 
-                if (layerName.equals("Collisions")) {
+                if (normalizedName.equals("collisions")
+                        || normalizedName.equals("collision")) {
                     collisionData = readBooleanLayer(layer);
                 }
 
-                if (layerName.equals("TransitionToDungeon")
-                        || layerName.equals("TransitionToGreatHall")
-                        || layerName.equals("TransitionToVillage")
-                        || layerName.equals("Transitions")) {
+                if (normalizedName.equals("transitiontodungeon")
+                        || normalizedName.equals("transitiontogreathall")
+                        || normalizedName.equals("transitiontovillage")
+                        || normalizedName.equals("transitions")
+                        || normalizedName.equals("transition")) {
                     transitionData = readBooleanLayer(layer);
                 }
+            }
+
+        } catch (MapLoadException e) {
+            System.out.println(e.getMessage());
+            e.printStackTrace();
+
+            /*
+             * Daca TMX-ul nu merge, cream matrici goale ca sa nu dea NullPointerException.
+             * Harta vizuala se poate desena in continuare.
+             */
+            if (rows > 0 && cols > 0) {
+                collisionData = new boolean[rows][cols];
+                transitionData = new boolean[rows][cols];
             }
 
         } catch (Exception e) {
             System.out.println("Eroare la citirea logicii din TMX: " + tmxPath);
             e.printStackTrace();
+
+            if (rows > 0 && cols > 0) {
+                collisionData = new boolean[rows][cols];
+                transitionData = new boolean[rows][cols];
+            }
         }
     }
+    
 
     /*! \fn private boolean[][] readBooleanLayer(Element layer)
         \brief Transforma un layer din Tiled intr-o matrice boolean.

@@ -78,6 +78,18 @@ public abstract class Entity {
      */
     public boolean isDead() { return isDead; }
 
+    /*! \fn public void forceDead()
+    \brief Marcheaza fortat entitatea ca fiind moarta.
+
+    \details
+    Este folosita la Load Game pentru a restaura inamicii care erau deja invinsi
+    in momentul salvarii.
+ */
+    public void forceDead() {
+        currentHp = 0;
+        isDead = true;
+    }
+
     /*! \fn public int getCurrentHp()
         \brief Returneaza HP-ul curent.
      */
@@ -190,3 +202,4 @@ public abstract class Entity {
     public float GetFeetCenterY() { return y + feetOffsetY + feetHeight / 2.0f; }
     public float GetFeetBottomY() { return y + feetOffsetY + feetHeight - 1;    }
 }
+

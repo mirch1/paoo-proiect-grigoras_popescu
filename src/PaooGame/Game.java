@@ -3,6 +3,7 @@ package PaooGame;
 import PaooGame.enemies.Enemy;
 import PaooGame.enemies.Skeleton;
 import PaooGame.enemies.Spider;
+import PaooGame.enemies.EnemyFactory;
 import PaooGame.GameWindow.GameWindow;
 import PaooGame.Graphics.Assets;
 import PaooGame.Tiles.Tile;
@@ -10,6 +11,7 @@ import PaooGame.Tiles.Tile;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferStrategy;
+import PaooGame.Exceptions.InvalidGameStateException;
 
 /*! \class Game
     \brief Clasa principala a jocului.
@@ -22,19 +24,6 @@ import java.awt.image.BufferStrategy;
     - deseneaza harta, personajele, meniul de pauza si HUD-ul;
     - gestioneaza salvarea si tranzitiile intre niveluri.
 
-    Fisierul a fost rescris folosind exact numele de fisiere din folderul tau `res/maps`:
-    - level1_base.png
-    - level1_foreground.png
-    - level2_base.png
-    - level2_foreground.png
-    - level3_village_base.png
-    - level3_village_foreground.png
-    - level3_base.png
-    - level3_foreground.png
-    - harta_primul_nivel.tmx
-    - harta_nivel2_dungeon.tmx
-    - harta_nivel3_village.tmx
-    - harta_nivel3_the_great_hall.tmx
 */
 public class Game implements Runnable {
 
@@ -71,6 +60,8 @@ public class Game implements Runnable {
     /// Al doilea inamic specific nivelului 2.
     private Spider spider;
 
+    private java.util.List<NPC> npcs = new java.util.ArrayList<>();
+
     /// Nivelul curent incarcat.
     private int currentLevel;
 
@@ -89,6 +80,14 @@ public class Game implements Runnable {
     /// Arata daca jocul este in pauza.
     private boolean isPaused = false;
 
+    /*! \brief Retine daca jocul este in stare de lupta.
+
+    \details
+    Este folosit pentru a schimba soundtrack-ul doar o singura data
+    cand jucatorul intra sau iese din raza unui inamic.
+ */
+    private boolean inBattle = false;
+
     /// Optiunea curenta selectata in meniul de pauza.
     private int pauseMenuSelection = 0;
 
@@ -100,6 +99,8 @@ public class Game implements Runnable {
 
     /// Nivelul in care jucatorul a murit.
     private int deathLevel = 1;
+
+    private String deathSubtitle = "";
 
     /// Marcheaza revenirea in meniul principal dupa oprirea jocului.
     private volatile boolean returnToMenuRequested = false;
@@ -177,6 +178,12 @@ public class Game implements Runnable {
                 if (player != null) {
                     player.setPosition(savedGameState.getPlayerX(), savedGameState.getPlayerY());
                 }
+                /*
+                 * Dupa ce nivelul a fost incarcat si inamicii au fost creati,
+                 * restauram starea inamicilor invinsi din salvare.
+                 */
+                applyDefeatedEnemies(savedGameState);
+
                 if (camera != null && map != null && player != null) {
                     camera.CenterOnPlayer(player, map);
                 }
@@ -251,6 +258,111 @@ public class Game implements Runnable {
             runState = true;
             gameThread = new Thread(this);
             gameThread.start();
+        }
+    }
+
+    // =========================================================================
+// AUDIO
+// =========================================================================
+
+    /*! \fn private void updateLevelMusic()
+        \brief Porneste soundtrack-ul potrivit pentru nivelul curent.
+
+        \details
+        Aceasta metoda este apelata cand se incarca un nivel nou.
+        Muzica de battle nu este pornita aici, ci separat, in functie de apropierea
+        jucatorului de inamici.
+     */
+    private void updateLevelMusic() {
+        /// Cand incarcam un nivel nou, iesim automat din starea de lupta.
+        inBattle = false;
+
+        switch (currentLevel) {
+            case 1 -> AudioManager.getInstance().playMusic("res/audio/forest_theme.wav");
+            case 2 -> AudioManager.getInstance().playMusic("res/audio/dungeon_theme.wav");
+            case 3 -> AudioManager.getInstance().playMusic("res/audio/village_theme.wav");
+            case 4 -> AudioManager.getInstance().playMusic("res/audio/great_hall_theme.wav");
+            default -> AudioManager.getInstance().playMusic("res/audio/forest_theme.wav");
+        }
+    }
+
+    /*! \fn private boolean isEnemyCloseForBattle(Entity enemy, float radius)
+        \brief Verifica daca un inamic este suficient de aproape pentru a porni muzica de lupta.
+
+        \param enemy Inamicul verificat.
+        \param radius Raza de detectie pentru battle music.
+        \return true daca inamicul este viu si aproape de jucator.
+     */
+    private boolean isEnemyCloseForBattle(Entity enemy, float radius) {
+        if (player == null || enemy == null || enemy.isDead()) {
+            return false;
+        }
+
+        float dx = player.GetFeetCenterX() - enemy.GetFeetCenterX();
+        float dy = player.GetFeetBottomY() - enemy.GetFeetBottomY();
+
+        double distance = Math.sqrt(dx * dx + dy * dy);
+
+        /*
+         * Pornim muzica de battle fie daca inamicul este aproape,
+         * fie daca hitbox-urile se intersecteaza deja.
+         */
+        return distance <= radius || player.getFeetRect().intersects(enemy.getFeetRect());
+    }
+
+    /*! \fn private boolean shouldPlayBattleMusic()
+    \brief Verifica daca in nivelul curent exista un inamic activ aproape de jucator.
+
+    \details
+    Verifica atat inamicii clasici, precum lupul, scheletul si paianjenul,
+    cat si NPC-urile ostile, cum sunt gardienii regali din Great Hall.
+
+    \return true daca trebuie pornita muzica de lupta.
+ */
+    private boolean shouldPlayBattleMusic() {
+        if (isEnemyCloseForBattle(wolf, 220)
+                || isEnemyCloseForBattle(skeleton, 220)
+                || isEnemyCloseForBattle(spider, 220)) {
+            return true;
+        }
+
+        /*
+         * In Great Hall, cavalerii/gardienii sunt tinuti in lista npcs,
+         * nu in variabilele wolf/skeleton/spider.
+         * De aceea trebuie verificati separat pentru battle music.
+         */
+        for (NPC npc : npcs) {
+            if (npc != null && npc.isGuardActive() && isEnemyCloseForBattle(npc, 220)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /*! \fn private void updateBattleMusic()
+        \brief Schimba muzica intre tema nivelului si tema de lupta.
+
+        \details
+        Daca jucatorul se apropie de un inamic, pornim battle_theme.
+        Cand nu mai exista inamic viu aproape, revenim la muzica nivelului curent.
+     */
+    private void updateBattleMusic() {
+        if (isDeathScreen || player == null || player.isDead()) {
+            inBattle = false;
+            return;
+        }
+
+        boolean shouldBeInBattle = shouldPlayBattleMusic();
+
+        if (shouldBeInBattle && !inBattle) {
+            inBattle = true;
+            AudioManager.getInstance().playMusic("res/audio/battle_theme.wav");
+        }
+
+        if (!shouldBeInBattle && inBattle) {
+            inBattle = false;
+            updateLevelMusic();
         }
     }
 
@@ -346,6 +458,12 @@ public class Game implements Runnable {
             spider.Update(map);
         }
 
+        if (map != null) {
+            for (NPC npc : npcs) {
+                npc.Update(map);
+            }
+        }
+
         /// Camera urmareste jucatorul activ.
         if (camera != null && player != null && map != null) {
             camera.CenterOnPlayer(player, map);
@@ -356,10 +474,22 @@ public class Game implements Runnable {
             transitionCooldown--;
         }
 
+        if (isBadEntranceAttempt()) {
+            openDeathScreen("BAD ENTRANCE");
+            return;
+        }
+
         /// Verificam tranzitiile si combat-ul.
         checkLevelTransition();
         if (player != null) {
             checkCombat();
+
+            /*
+             * Actualizam soundtrack-ul de battle dupa combat.
+             * Daca jucatorul este aproape de un inamic viu, pornim muzica de lupta.
+             * Daca se indeparteaza sau inamicul moare, revenim la tema nivelului.
+             */
+            updateBattleMusic();
         }
 
         lastUpState = keyManager.up;
@@ -368,11 +498,16 @@ public class Game implements Runnable {
     }
 
     // =========================================================================
-    // COMBAT
-    // =========================================================================
+// COMBAT
+// =========================================================================
 
     /*! \fn private void checkCombat()
         \brief Verifica interactiunile de lupta dintre jucator si inamici.
+
+        \details
+        Damage-ul este ajustat in functie de dificultatea aleasa in Settings.
+        Pe EASY, playerul loveste mai tare si primeste mai putin damage.
+        Pe HARD, playerul loveste mai slab si primeste mai mult damage.
     */
     private void checkCombat() {
         if (player == null || player.isDead()) {
@@ -382,25 +517,48 @@ public class Game implements Runnable {
         Rectangle playerAtk = player.getAttackHitbox();
         Rectangle playerFeet = player.getFeetRect();
 
+        /*
+         * Calculam damage-ul in functie de dificultatea selectata in Settings.
+         *
+         * GameSettings.getPlayerDamage(...) modifica damage-ul dat de player.
+         * GameSettings.getEnemyDamage(...) modifica damage-ul primit de la inamici.
+         */
+        int playerAttackDamage = GameSettings.getPlayerDamage(Player.ATTACK_DAMAGE);
+
+        int wolfAttackDamage = GameSettings.getEnemyDamage(Enemy.ATTACK_DAMAGE);
+        int skeletonAttackDamage = GameSettings.getEnemyDamage(Skeleton.ATTACK_DAMAGE);
+        int spiderWebDamage = GameSettings.getEnemyDamage(Spider.WEB_DAMAGE);
+        int guardAttackDamage = GameSettings.getEnemyDamage(NPC.GUARD_ATTACK_DAMAGE);
+
         /// Atacul jucatorului loveste doar inamicii vii aflati in raza sabiei.
         if (playerAtk != null) {
             if (wolf != null && !wolf.isDead() && playerAtk.intersects(wolf.getFeetRect())) {
-                wolf.takeDamage(Player.ATTACK_DAMAGE);
+                wolf.takeDamage(playerAttackDamage);
             }
+
             if (skeleton != null && !skeleton.isDead() && playerAtk.intersects(skeleton.getFeetRect())) {
-                skeleton.takeDamage(Player.ATTACK_DAMAGE);
+                skeleton.takeDamage(playerAttackDamage);
             }
+
             if (spider != null && !spider.isDead() && playerAtk.intersects(spider.getFeetRect())) {
-                spider.takeDamage(Player.ATTACK_DAMAGE);
+                spider.takeDamage(playerAttackDamage);
+            }
+
+            for (NPC npc : npcs) {
+                if (npc != null && npc.canBeAttacked() && playerAtk.intersects(npc.getFeetRect())) {
+                    npc.takeDamage(playerAttackDamage);
+                }
             }
         }
 
-        /// Damage de contact.
+        /// Damage de contact cu lupul.
         if (wolf != null && !wolf.isDead() && playerFeet.intersects(wolf.getFeetRect())) {
-            player.takeDamage(Enemy.ATTACK_DAMAGE);
+            player.takeDamage(wolfAttackDamage);
         }
+
+        /// Damage de contact cu scheletul.
         if (skeleton != null && !skeleton.isDead() && playerFeet.intersects(skeleton.getFeetRect())) {
-            player.takeDamage(Skeleton.ATTACK_DAMAGE);
+            player.takeDamage(skeletonAttackDamage);
         }
 
         /// Proiectilul paianjenului loveste la distanta mica fata de jucator.
@@ -409,11 +567,19 @@ public class Game implements Runnable {
             float wy = spider.getWebY();
             float px = player.GetFeetCenterX();
             float py = player.GetFeetBottomY();
+
             double dist = Math.sqrt((wx - px) * (wx - px) + (wy - py) * (wy - py));
 
             if (dist < 16) {
-                player.takeDamage(Spider.WEB_DAMAGE);
+                player.takeDamage(spiderWebDamage);
                 spider.deactivateWeb();
+            }
+        }
+
+        /// NPC-urile ostile, de exemplu gardienii, pot da damage playerului.
+        for (NPC npc : npcs) {
+            if (npc != null && npc.canDamagePlayer(player)) {
+                player.takeDamage(guardAttackDamage);
             }
         }
 
@@ -427,14 +593,19 @@ public class Game implements Runnable {
     // ECRAN DE MOARTE
     // =========================================================================
 
-    /*! \fn private void openDeathScreen()
-        \brief Opreste gameplay-ul si afiseaza meniul de moarte.
-    */
     private void openDeathScreen() {
+        openDeathScreen("");
+    }
+
+    private void openDeathScreen(String subtitle) {
         deathLevel = currentLevel;
         deathMenuSelection = 0;
+        deathSubtitle = subtitle;
         isDeathScreen = true;
         isPaused = false;
+
+        AudioManager.getInstance().stopMusic();
+        inBattle = false;
 
         if (keyManager != null) {
             keyManager.Clear();
@@ -490,6 +661,7 @@ public class Game implements Runnable {
             lastDownState = false;
             lastEnterState = false;
         } else {
+            AudioManager.getInstance().stopMusic();
             System.exit(0);
         }
     }
@@ -499,17 +671,117 @@ public class Game implements Runnable {
     // =========================================================================
 
     /*! \fn private void executePauseMenuAction()
-        \brief Executa actiunea selectata in meniul de pauza.
-    */
+    \brief Executa actiunea selectata in meniul de pauza.
+ */
     private void executePauseMenuAction() {
+        /// Feedback audio scurt pentru selectia din meniul de pauza.
+        AudioManager.getInstance().playSoundEffect("res/audio/button_click.wav");
+
         switch (pauseMenuSelection) {
             case 0 -> {
                 Window owner = SwingUtilities.getWindowAncestor(wnd.GetCanvas());
                 SwingUtilities.invokeLater(() -> SettingsDialog.showSettings(owner));
             }
+
             case 1 -> saveCurrentGame(true);
+
             case 2 -> returnToMainMenu();
-            case 3 -> System.exit(0);
+
+            case 3 -> {
+                AudioManager.getInstance().stopMusic();
+                System.exit(0);
+            }
+        }
+    }
+
+    /*! \fn private void appendDefeatedId(StringBuilder builder, String id)
+    \brief Adauga un ID de inamic invins in lista salvata.
+
+    \param builder StringBuilder-ul in care se construieste lista.
+    \param id ID-ul inamicului invins.
+ */
+    private void appendDefeatedId(StringBuilder builder, String id) {
+        if (builder.length() > 0) {
+            builder.append(",");
+        }
+
+        builder.append(id);
+    }
+
+    /*! \fn private String getDefeatedEnemiesForSave()
+        \brief Construieste lista inamicilor invinsi din nivelul curent.
+
+        \details
+        Lista este salvata in fisierul .properties.
+        Exemple:
+        - wolf
+        - skeleton
+        - spider
+        - npc0, npc1 pentru gardienii regali din Great Hall.
+
+        \return Lista de ID-uri separate prin virgula.
+     */
+    private String getDefeatedEnemiesForSave() {
+        StringBuilder defeated = new StringBuilder();
+
+        if (wolf != null && wolf.isDead()) {
+            appendDefeatedId(defeated, "wolf");
+        }
+
+        if (skeleton != null && skeleton.isDead()) {
+            appendDefeatedId(defeated, "skeleton");
+        }
+
+        if (spider != null && spider.isDead()) {
+            appendDefeatedId(defeated, "spider");
+        }
+
+        /*
+         * NPC-urile sunt salvate dupa pozitia lor in lista.
+         * In Great Hall, npc0, npc1, npc2, npc3 sunt cavalerii/gardienii regali.
+         */
+        for (int i = 0; i < npcs.size(); i++) {
+            NPC npc = npcs.get(i);
+
+            if (npc != null && npc.isDefeated()) {
+                appendDefeatedId(defeated, "npc" + i);
+            }
+        }
+
+        return defeated.toString();
+    }
+
+    /*! \fn private void applyDefeatedEnemies(SaveGameState state)
+        \brief Restaureaza starea inamicilor invinsi dupa Load Game.
+
+        \details
+        Dupa incarcarea nivelului, inamicii sunt creati din nou.
+        Aceasta metoda ii marcheaza drept morti/invinsi pe cei care existau
+        in lista salvata.
+     */
+    private void applyDefeatedEnemies(SaveGameState state) {
+        if (state == null) {
+            return;
+        }
+
+        if (wolf != null && state.isEnemyDefeated("wolf")) {
+            wolf.forceDead();
+        }
+
+        if (skeleton != null && state.isEnemyDefeated("skeleton")) {
+            skeleton.forceDead();
+        }
+
+        if (spider != null && state.isEnemyDefeated("spider")) {
+            spider.forceDead();
+        }
+
+        for (int i = 0; i < npcs.size(); i++) {
+            NPC npc = npcs.get(i);
+
+            if (npc != null && state.isEnemyDefeated("npc" + i)) {
+                npc.forceDefeatedState();
+            }
         }
     }
 
@@ -518,20 +790,49 @@ public class Game implements Runnable {
 
         \param showMessage Daca este true, afiseaza mesaj de confirmare.
     */
+    /*! \fn private void saveCurrentGame(boolean showMessage)
+    \brief Salveaza progresul curent.
+
+    \param showMessage Daca este true, afiseaza mesaj de confirmare.
+*/
     private void saveCurrentGame(boolean showMessage) {
-        if (player == null) {
-            return;
-        }
+        try {
+            if (player == null) {
+                throw new InvalidGameStateException(
+                        "Nu se poate salva jocul: playerul nu exista."
+                );
+            }
 
-        SaveManager.saveGame(currentLevel, player.GetX(), player.GetY());
+            SaveManager.saveGame(
+                    currentLevel,
+                    player.GetX(),
+                    player.GetY(),
+                    getDefeatedEnemiesForSave()
+            );
 
-        if (showMessage) {
-            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
-                    null,
-                    "Jocul a fost salvat cu succes.",
-                    "Save Game",
-                    JOptionPane.INFORMATION_MESSAGE
-            ));
+            /// Redam un efect sonor scurt pentru salvare.
+            AudioManager.getInstance().playSoundEffect("res/audio/save_theme.wav");
+
+            if (showMessage) {
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                        null,
+                        "Jocul a fost salvat cu succes.",
+                        "Save Game",
+                        JOptionPane.INFORMATION_MESSAGE
+                ));
+            }
+
+        } catch (InvalidGameStateException e) {
+            System.out.println(e.getMessage());
+
+            if (showMessage) {
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                        null,
+                        e.getMessage(),
+                        "Save Game Error",
+                        JOptionPane.ERROR_MESSAGE
+                ));
+            }
         }
     }
 
@@ -539,13 +840,36 @@ public class Game implements Runnable {
         \brief Cere revenirea in meniul principal si opreste jocul.
     */
     private void returnToMainMenu() {
+        /*
+         * Oprim muzica nivelului / battle inainte de revenirea la meniu.
+         * MenuWindow va porni din nou menu_theme.wav in constructor.
+         */
+        AudioManager.getInstance().stopMusic();
         returnToMenuRequested = true;
         runState = false;
     }
 
+    /*! \fn private void drawCinematicOverlay(Graphics2D g2d)
+    \brief Deseneaza un efect vizual cinematic peste joc.
+
+    \details
+    Este activat din Settings prin GameSettings.cinematicMode.
+    Nu afecteaza logica jocului, doar atmosfera vizuala.
+ */
+    private void drawCinematicOverlay(Graphics2D g2d) {
+        /// Umbra subtila peste scena.
+        g2d.setColor(new Color(0, 0, 0, 35));
+        g2d.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
+
+        /// Benzi cinematice sus si jos.
+        g2d.setColor(new Color(0, 0, 0, 170));
+        g2d.fillRect(0, 0, LOGICALWIDTH, 42);
+        g2d.fillRect(0, LOGICALHEIGHT - 42, LOGICALWIDTH, 42);
+    }
     // =========================================================================
     // DRAW
     // =========================================================================
+
 
     /*! \fn private void Draw()
         \brief Randeaza cadrul curent al jocului.
@@ -621,6 +945,12 @@ public class Game implements Runnable {
             spider.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
 
+        if (camera != null) {
+            for (NPC npc : npcs) {
+                npc.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            }
+        }
+
         /// 3. Jucatorul.
         if (player != null && camera != null) {
             player.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
@@ -629,6 +959,14 @@ public class Game implements Runnable {
         /// 4. Foreground-ul hartii.
         if (map != null && camera != null) {
             map.DrawForeground(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
+
+        /*
+         * Efect vizual cinematic activat din Settings.
+         * Nu il afisam peste debug, ca sa nu incurce verificarea coliziunilor.
+         */
+        if (GameSettings.cinematicMode && !Game.showHitboxes) {
+            drawCinematicOverlay(g2d);
         }
 
         /// 5. Barele de viata ale inamicilor, desenate peste foreground.
@@ -743,11 +1081,26 @@ public class Game implements Runnable {
         g2d.setColor(new Color(210, 35, 35));
         g2d.drawString(title, titleX, titleY);
 
+        int startY = 330;
+
+        if (deathSubtitle != null && !deathSubtitle.isEmpty()) {
+            Font subtitleFont = new Font("Serif", Font.BOLD, 34);
+            g2d.setFont(subtitleFont);
+            FontMetrics subtitleMetrics = g2d.getFontMetrics(subtitleFont);
+
+            int subtitleX = (LOGICALWIDTH - subtitleMetrics.stringWidth(deathSubtitle)) / 2;
+            int subtitleY = titleY + 52;
+
+            g2d.setColor(new Color(218, 165, 32));
+            g2d.drawString(deathSubtitle, subtitleX, subtitleY);
+
+            startY = 370;
+        }
+
         String[] options = {"TRY AGAIN", "EXIT GAME"};
         Font optionFont = new Font("Serif", Font.BOLD, 34);
         g2d.setFont(optionFont);
         FontMetrics optionMetrics = g2d.getFontMetrics(optionFont);
-        int startY = 330;
 
         for (int i = 0; i < options.length; i++) {
             String text = options[i];
@@ -807,6 +1160,7 @@ public class Game implements Runnable {
         wolf = null;
         skeleton = null;
         spider = null;
+        npcs.clear();
 
         if (player == null) {
             player = new Player(0, 0);
@@ -819,7 +1173,13 @@ public class Game implements Runnable {
                     "res/maps/harta_primul_nivel.tmx"
             );
             setPlayerSpawn(10, 14);
-            wolf = new Enemy(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
+            wolf = EnemyFactory.createWolf(
+                    15 * Tile.TILE_WIDTH,
+                    14 * Tile.TILE_HEIGHT,
+                    player
+            );
+            npcs.add(new NPC(11 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_spear_small.png"));
+            npcs.add(new NPC(15 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_shield_small.png"));
 
         } else if (level == 2) {
             map = new Map(
@@ -828,9 +1188,17 @@ public class Game implements Runnable {
                     "res/maps/harta_nivel2_dungeon.tmx"
             );
             setPlayerSpawn(19, 24);
-            skeleton = new Skeleton(11 * Tile.TILE_WIDTH, 13 * Tile.TILE_HEIGHT, player);
-            spider = new Spider(29 * Tile.TILE_WIDTH, 19 * Tile.TILE_HEIGHT, player);
+            skeleton = EnemyFactory.createSkeleton(
+                    11 * Tile.TILE_WIDTH,
+                    13 * Tile.TILE_HEIGHT,
+                    player
+            );
 
+            spider = EnemyFactory.createSpider(
+                    29 * Tile.TILE_WIDTH,
+                    19 * Tile.TILE_HEIGHT,
+                    player
+            );
         } else if (level == 3) {
             map = new Map(
                     "res/maps/level3_village_base.png",
@@ -838,6 +1206,15 @@ public class Game implements Runnable {
                     "res/maps/harta_nivel3_village.tmx"
             );
             setPlayerSpawn(24, 31);
+            // Garzi la poarta castelului
+            npcs.add(new NPC(20 * Tile.TILE_WIDTH, 7 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_spear_small.png"));
+            npcs.add(new NPC(28 * Tile.TILE_WIDTH, 7 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_shield_small.png"));
+
+            // Sateni prin sat
+            npcs.add(new NPC(17 * Tile.TILE_WIDTH, 24 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_blacksmith_small.png"));
+            npcs.add(new NPC(33 * Tile.TILE_WIDTH, 25 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_peasant_woman_small.png"));
+            npcs.add(new NPC(12 * Tile.TILE_WIDTH, 18 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_elder_lantern_small.png"));
+            npcs.add(new NPC(28 * Tile.TILE_WIDTH, 20 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_merchant_traveler_small.png"));
 
         } else if (level == 4) {
             map = new Map(
@@ -846,9 +1223,32 @@ public class Game implements Runnable {
                     "res/maps/harta_nivel3_the_great_hall.tmx"
             );
             setPlayerSpawn(9, 13);
+            npcs.add(new NPC(6 * Tile.TILE_WIDTH, 10 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
+            npcs.add(new NPC(13 * Tile.TILE_WIDTH, 10 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
+            npcs.add(new NPC(7 * Tile.TILE_WIDTH, 12 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
+            npcs.add(new NPC(12 * Tile.TILE_WIDTH, 12 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
         }
 
         transitionCooldown = 30;
+
+        /*
+         * Dupa incarcarea nivelului, pornim muzica potrivita.
+         * Astfel, cand trecem Forest -> Dungeon -> Village -> Great Hall,
+         * soundtrack-ul se schimba automat.
+         */
+        updateLevelMusic();
+    }
+
+
+    private boolean isBadEntranceAttempt() {
+        if (currentLevel != 1 || player == null) {
+            return false;
+        }
+
+        int tileCol = (int) (player.GetFeetCenterX() / Tile.TILE_WIDTH);
+        int tileRow = (int) (player.GetFeetBottomY() / Tile.TILE_HEIGHT);
+
+        return tileRow <= 3 && tileCol >= 11 && tileCol <= 15;
     }
 
     /*! \fn private void checkLevelTransition()
@@ -886,4 +1286,3 @@ public class Game implements Runnable {
         }
     }
 }
-

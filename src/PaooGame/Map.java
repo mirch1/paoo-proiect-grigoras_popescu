@@ -16,7 +16,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.List;
-
+import PaooGame.Exceptions.MapLoadException;
 /*! \class Map
     \brief Gestioneaza incarcarea, logica de coliziune si randarea hartii.
  */

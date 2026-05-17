@@ -28,6 +28,9 @@ public class AudioManager {
     /*! \brief Calea melodiei care ruleaza in prezent. */
     private String currentMusicPath;
 
+    /*! \brief Ultima melodie ceruta de joc. Este folosita pentru reluare dupa reactivarea muzicii. */
+    private String lastRequestedMusicPath;
+
     /*! \brief Flag care indica daca muzica este activata. */
     private boolean musicEnabled = true;
 
@@ -71,6 +74,13 @@ public class AudioManager {
         \param path Calea catre fisierul audio.
      */
     public void playMusic(String path) {
+        /*
+         * Retinem mereu ultima melodie ceruta.
+         * Astfel, daca muzica este oprita din Settings si apoi repornita,
+         * putem relua automat tema curenta.
+         */
+        lastRequestedMusicPath = path;
+
         if (!musicEnabled) {
             return;
         }
@@ -297,11 +307,23 @@ public class AudioManager {
     /*! \fn public void setMusicEnabled(boolean musicEnabled)
         \brief Activeaza sau dezactiveaza muzica.
      */
+
+    /*! \fn public void setMusicEnabled(boolean musicEnabled)
+    \brief Activeaza sau dezactiveaza muzica.
+ */
     public void setMusicEnabled(boolean musicEnabled) {
         this.musicEnabled = musicEnabled;
 
         if (!musicEnabled) {
             stopMusic();
+        } else {
+            /*
+             * Daca muzica a fost repornita din Settings, reluam ultima tema ceruta.
+             * De exemplu: menu_theme, dungeon_theme, battle_theme etc.
+             */
+            if (lastRequestedMusicPath != null) {
+                playMusic(lastRequestedMusicPath);
+            }
         }
     }
 
@@ -326,3 +348,4 @@ public class AudioManager {
         return soundEffectsEnabled;
     }
 }
+

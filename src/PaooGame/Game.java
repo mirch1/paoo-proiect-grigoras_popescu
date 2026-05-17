@@ -3,6 +3,7 @@ package PaooGame;
 import PaooGame.enemies.Enemy;
 import PaooGame.enemies.Skeleton;
 import PaooGame.enemies.Spider;
+import PaooGame.enemies.EnemyFactory;
 import PaooGame.GameWindow.GameWindow;
 import PaooGame.Graphics.Assets;
 import PaooGame.Tiles.Tile;
@@ -997,7 +998,11 @@ private void saveCurrentGame(boolean showMessage) {
                     "res/maps/harta_primul_nivel.tmx"
             );
             setPlayerSpawn(10, 14);
-            wolf = new Enemy(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
+            wolf = EnemyFactory.createWolf(
+                    15 * Tile.TILE_WIDTH,
+                    14 * Tile.TILE_HEIGHT,
+                    player
+            );
             npcs.add(new NPC(11 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_spear_small.png"));
             npcs.add(new NPC(15 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_shield_small.png"));
 
@@ -1008,8 +1013,17 @@ private void saveCurrentGame(boolean showMessage) {
                     "res/maps/harta_nivel2_dungeon.tmx"
             );
             setPlayerSpawn(19, 24);
-            skeleton = new Skeleton(11 * Tile.TILE_WIDTH, 13 * Tile.TILE_HEIGHT, player);
-            spider = new Spider(29 * Tile.TILE_WIDTH, 19 * Tile.TILE_HEIGHT, player);
+            skeleton = EnemyFactory.createSkeleton(
+                    11 * Tile.TILE_WIDTH,
+                    13 * Tile.TILE_HEIGHT,
+                    player
+            );
+
+            spider = EnemyFactory.createSpider(
+                    29 * Tile.TILE_WIDTH,
+                    19 * Tile.TILE_HEIGHT,
+                    player
+            );
 
         } else if (level == 3) {
             map = new Map(

@@ -22,7 +22,7 @@ import java.awt.image.BufferStrategy;
     - deseneaza harta, personajele, meniul de pauza si HUD-ul;
     - gestioneaza salvarea si tranzitiile intre niveluri.
 
-    
+*/
 public class Game implements Runnable {
 
     /// Fereastra principala a jocului.
@@ -57,6 +57,8 @@ public class Game implements Runnable {
 
     /// Al doilea inamic specific nivelului 2.
     private Spider spider;
+
+    private java.util.List<NPC> npcs = new java.util.ArrayList<>();
 
     /// Nivelul curent incarcat.
     private int currentLevel;
@@ -95,6 +97,8 @@ public class Game implements Runnable {
 
     /// Nivelul in care jucatorul a murit.
     private int deathLevel = 1;
+
+    private String deathSubtitle = "";
 
     /// Marcheaza revenirea in meniul principal dupa oprirea jocului.
     private volatile boolean returnToMenuRequested = false;
@@ -427,6 +431,12 @@ public class Game implements Runnable {
             spider.Update(map);
         }
 
+        if (map != null) {
+            for (NPC npc : npcs) {
+                npc.Update(map);
+            }
+        }
+
         /// Camera urmareste jucatorul activ.
         if (camera != null && player != null && map != null) {
             camera.CenterOnPlayer(player, map);
@@ -435,6 +445,11 @@ public class Game implements Runnable {
         /// Scadem cooldown-ul pentru schimbarea de nivel.
         if (transitionCooldown > 0) {
             transitionCooldown--;
+        }
+
+        if (isBadEntranceAttempt()) {
+            openDeathScreen("BAD ENTRANCE");
+            return;
         }
 
         /// Verificam tranzitiile si combat-ul.
@@ -481,6 +496,12 @@ public class Game implements Runnable {
             if (spider != null && !spider.isDead() && playerAtk.intersects(spider.getFeetRect())) {
                 spider.takeDamage(Player.ATTACK_DAMAGE);
             }
+
+            for (NPC npc : npcs) {
+                if (npc.canBeAttacked() && playerAtk.intersects(npc.getFeetRect())) {
+                    npc.takeDamage(Player.ATTACK_DAMAGE);
+                }
+            }
         }
 
         /// Damage de contact.
@@ -505,6 +526,12 @@ public class Game implements Runnable {
             }
         }
 
+        for (NPC npc : npcs) {
+            if (npc.canDamagePlayer(player)) {
+                player.takeDamage(NPC.GUARD_ATTACK_DAMAGE);
+            }
+        }
+
         /// Daca jucatorul moare, afisam ecranul de retry.
         if (player.isDead()) {
             openDeathScreen();
@@ -515,19 +542,17 @@ public class Game implements Runnable {
     // ECRAN DE MOARTE
     // =========================================================================
 
-    /*! \fn private void openDeathScreen()
-        \brief Opreste gameplay-ul si afiseaza meniul de moarte.
-    */
     private void openDeathScreen() {
+        openDeathScreen("");
+    }
+
+    private void openDeathScreen(String subtitle) {
         deathLevel = currentLevel;
         deathMenuSelection = 0;
+        deathSubtitle = subtitle;
         isDeathScreen = true;
         isPaused = false;
 
-        /*
-         * Oprim muzica de lupta/nivel cand jucatorul moare.
-         * Daca vrei mai tarziu, poti porni aici un game_over_theme.wav.
-         */
         AudioManager.getInstance().stopMusic();
         inBattle = false;
 
@@ -734,6 +759,12 @@ public class Game implements Runnable {
             spider.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
 
+        if (camera != null) {
+            for (NPC npc : npcs) {
+                npc.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            }
+        }
+
         /// 3. Jucatorul.
         if (player != null && camera != null) {
             player.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
@@ -856,11 +887,26 @@ public class Game implements Runnable {
         g2d.setColor(new Color(210, 35, 35));
         g2d.drawString(title, titleX, titleY);
 
+        int startY = 330;
+
+        if (deathSubtitle != null && !deathSubtitle.isEmpty()) {
+            Font subtitleFont = new Font("Serif", Font.BOLD, 34);
+            g2d.setFont(subtitleFont);
+            FontMetrics subtitleMetrics = g2d.getFontMetrics(subtitleFont);
+
+            int subtitleX = (LOGICALWIDTH - subtitleMetrics.stringWidth(deathSubtitle)) / 2;
+            int subtitleY = titleY + 52;
+
+            g2d.setColor(new Color(218, 165, 32));
+            g2d.drawString(deathSubtitle, subtitleX, subtitleY);
+
+            startY = 370;
+        }
+
         String[] options = {"TRY AGAIN", "EXIT GAME"};
         Font optionFont = new Font("Serif", Font.BOLD, 34);
         g2d.setFont(optionFont);
         FontMetrics optionMetrics = g2d.getFontMetrics(optionFont);
-        int startY = 330;
 
         for (int i = 0; i < options.length; i++) {
             String text = options[i];
@@ -920,6 +966,7 @@ public class Game implements Runnable {
         wolf = null;
         skeleton = null;
         spider = null;
+        npcs.clear();
 
         if (player == null) {
             player = new Player(0, 0);
@@ -933,6 +980,8 @@ public class Game implements Runnable {
             );
             setPlayerSpawn(10, 14);
             wolf = new Enemy(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
+            npcs.add(new NPC(11 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_spear_small.png"));
+            npcs.add(new NPC(15 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_shield_small.png"));
 
         } else if (level == 2) {
             map = new Map(
@@ -951,6 +1000,15 @@ public class Game implements Runnable {
                     "res/maps/harta_nivel3_village.tmx"
             );
             setPlayerSpawn(24, 31);
+            // Garzi la poarta castelului
+            npcs.add(new NPC(20 * Tile.TILE_WIDTH, 7 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_spear_small.png"));
+            npcs.add(new NPC(28 * Tile.TILE_WIDTH, 7 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_shield_small.png"));
+
+            // Sateni prin sat
+            npcs.add(new NPC(17 * Tile.TILE_WIDTH, 24 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_blacksmith_small.png"));
+            npcs.add(new NPC(33 * Tile.TILE_WIDTH, 25 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_peasant_woman_small.png"));
+            npcs.add(new NPC(12 * Tile.TILE_WIDTH, 18 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_elder_lantern_small.png"));
+            npcs.add(new NPC(28 * Tile.TILE_WIDTH, 20 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_merchant_traveler_small.png"));
 
         } else if (level == 4) {
             map = new Map(
@@ -959,6 +1017,10 @@ public class Game implements Runnable {
                     "res/maps/harta_nivel3_the_great_hall.tmx"
             );
             setPlayerSpawn(9, 13);
+            npcs.add(new NPC(6 * Tile.TILE_WIDTH, 10 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
+            npcs.add(new NPC(13 * Tile.TILE_WIDTH, 10 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
+            npcs.add(new NPC(7 * Tile.TILE_WIDTH, 12 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
+            npcs.add(new NPC(12 * Tile.TILE_WIDTH, 12 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
         }
 
         transitionCooldown = 30;
@@ -969,6 +1031,18 @@ public class Game implements Runnable {
          * soundtrack-ul se schimba automat.
          */
         updateLevelMusic();
+    }
+
+
+    private boolean isBadEntranceAttempt() {
+        if (currentLevel != 1 || player == null) {
+            return false;
+        }
+
+        int tileCol = (int) (player.GetFeetCenterX() / Tile.TILE_WIDTH);
+        int tileRow = (int) (player.GetFeetBottomY() / Tile.TILE_HEIGHT);
+
+        return tileRow <= 3 && tileCol >= 11 && tileCol <= 15;
     }
 
     /*! \fn private void checkLevelTransition()

@@ -84,6 +84,12 @@ public class Player extends Entity {
         }
     }
 
+
+    public void drinkMoonrootPotion() {
+        this.maxHp = 180;
+        this.currentHp = 180;
+    }
+    
     /*! \fn public void Update(KeyManager keyManager, Map map)
         \brief Actualizeaza inputul, miscare, animatii si timer-ele de HP.
      */

@@ -20,7 +20,7 @@ public class NPC extends Enemy {
         DEFEATED
     }
 
-    public static final int GUARD_ATTACK_DAMAGE = 10;
+    public static final int GUARD_ATTACK_DAMAGE = 5;
 
     private BufferedImage sprite;
     private NPCType type;

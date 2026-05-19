@@ -37,7 +37,7 @@ public class Skeleton extends Entity {
     private int lastTargetCol = -1;
 
     private static final int SKELETON_MAX_HP = 80;
-    public  static final int ATTACK_DAMAGE   = 12;
+    public  static final int ATTACK_DAMAGE   = 6;
 
     /*! \fn public Skeleton(float x, float y, Player targetPlayer)
         \brief Constructor — initializeaza HP, viteza si animatiile scheletului.

@@ -3,6 +3,7 @@ package PaooGame;
 import PaooGame.enemies.Enemy;
 import PaooGame.enemies.Skeleton;
 import PaooGame.enemies.Spider;
+import PaooGame.enemies.Malakar;
 import PaooGame.enemies.EnemyFactory;
 import PaooGame.Exceptions.DatabaseException;
 import PaooGame.Exceptions.InvalidGameStateException;
@@ -14,18 +15,23 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferStrategy;
 
-/*! \class Game
-    \brief Clasa principala a jocului.
-
-    \details
-    Aceasta clasa coordoneaza intreaga rulare a jocului:
-    - initializeaza fereastra si resursele;
-    - porneste game-loop-ul la aproximativ 60 FPS;
-    - actualizeaza inputul, entitatile si camera;
-    - deseneaza harta, personajele, meniul de pauza si HUD-ul;
-    - gestioneaza salvarea (inclusiv in baza de date) si tranzitiile intre niveluri.
-*/
+/*!
+ * \class Game
+ * \brief Clasa principala a jocului.
+ *
+ * \details
+ * Aceasta clasa coordoneaza intreaga rulare a jocului:
+ * - initializeaza fereastra si resursele;
+ * - porneste game-loop-ul la aproximativ 60 FPS;
+ * - actualizeaza inputul, entitatile si camera;
+ * - deseneaza harta, personajele, meniul de pauza si HUD-ul;
+ * - gestioneaza salvarea (inclusiv in baza de date) si tranzitiile intre niveluri.
+ */
 public class Game implements Runnable {
+
+    // =========================================================================
+    //  CAMPURI PRINCIPALE
+    // =========================================================================
 
     /// Fereastra principala a jocului.
     private GameWindow wnd;
@@ -51,24 +57,45 @@ public class Game implements Runnable {
     /// Jucatorul principal.
     private Player player;
 
-    /// Inamic specific nivelului 1 (lup).
+    // =========================================================================
+    //  INAMICI
+    // =========================================================================
+
+    /// Inamici de tip lup pentru nivelul 1.
     private Enemy wolf;
+    private Enemy wolf2;
+    private Enemy wolf3;
 
-    /// Inamic specific nivelului 2 (schelet).
+    /// Inamici de tip schelet pentru nivelul 2.
     private Skeleton skeleton;
+    private Skeleton skeleton2;
+    private Skeleton skeleton3;
 
-    /// Al doilea inamic specific nivelului 2 (paianjen).
+    /// Inamic de tip paianjen pentru nivelul 2.
     private Spider spider;
 
-    /*! \brief NPC-ul magician din nivelul 2.
-\details
-Este un NPC pasiv, animat, cu care jucatorul poate interactiona
-pentru a primi un dialog contextual in dungeon.
-*/
+    /*!
+     * \brief Boss-ul final din nivelul 4.
+     * \details
+     * Malakar apare exclusiv in Great Hall si este tratat separat de NPC-urile
+     * obisnuite, deoarece are logica proprie de update, combat, animatii si boss bar.
+     */
+    private Malakar malakar;
+
+    /*!
+     * \brief NPC-ul magician din nivelul 2.
+     * \details
+     * Este un NPC pasiv, animat, cu care jucatorul poate interactiona
+     * pentru a primi un dialog contextual in dungeon.
+     */
     private WizardNPC dungeonWizard;
 
     /// Lista de NPC-uri din nivelul curent (garzi, sateni, garzi regale).
     private java.util.List<NPC> npcs = new java.util.ArrayList<>();
+
+    // =========================================================================
+    //  STARE JOC
+    // =========================================================================
 
     /// Nivelul curent incarcat (1-4).
     private int currentLevel;
@@ -88,12 +115,12 @@ pentru a primi un dialog contextual in dungeon.
     /// Arata daca jocul este in pauza (meniu pauza activ).
     private boolean isPaused = false;
 
-    /*! \brief Retine daca jocul este in stare de lupta.
-
-        \details
-        Este folosit pentru a schimba soundtrack-ul doar o singura data
-        cand jucatorul intra sau iese din raza unui inamic.
-    */
+    /*!
+     * \brief Retine daca jocul este in stare de lupta.
+     * \details
+     * Este folosit pentru a schimba soundtrack-ul doar o singura data
+     * atunci cand jucatorul intra sau iese din raza unui inamic.
+     */
     private boolean inBattle = false;
 
     /// Optiunea curenta selectata in meniul de pauza (0-3).
@@ -120,17 +147,26 @@ pentru a primi un dialog contextual in dungeon.
     /// FPS-ul curent calculat o data pe secunda.
     public static int currentFPS = 0;
 
+    // =========================================================================
+    //  INPUT - EDGE DETECTION
+    // =========================================================================
+
     /// Stari anterioare ale tastelor pentru detectia apasarilor unice (edge detection).
     private boolean lastEscapeState = false;
-    private boolean lastUpState     = false;
-    private boolean lastDownState   = false;
-    private boolean lastEnterState  = false;
-    private boolean lastDebugState  = false;
+    private boolean lastUpState = false;
+    private boolean lastDownState = false;
+    private boolean lastEnterState = false;
+    private boolean lastDebugState = false;
 
-    /*! \brief Starea anterioara a tastei SPACE.
-        \details Folosita pentru edge detection in dialogBox (apasare unica).
-    */
+    /*!
+     * \brief Starea anterioara a tastei SPACE.
+     * \details Folosita pentru edge detection in dialogBox (apasare unica).
+     */
     private boolean lastSpaceState = false;
+
+    // =========================================================================
+    //  SAVE / PROFIL / UI
+    // =========================================================================
 
     /// Daca este true, jocul incearca sa incarce progresul salvat la initializare.
     private boolean loadSavedGame = false;
@@ -141,41 +177,29 @@ pentru a primi un dialog contextual in dungeon.
     /// Scorul acumulat in sesiunea curenta de joc.
     private int score = 0;
 
-    /*! \brief Caseta de dialog pentru naratiunea jocului.
-        \details Afiseaza texte la intrarea in niveluri sau la evenimente speciale.
-                 Jocul este pauzat cat timp dialogul este activ.
-    */
+    /*!
+     * \brief Caseta de dialog pentru naratiunea jocului.
+     * \details Afiseaza texte la intrarea in niveluri sau la evenimente speciale.
+     * Jocul este pauzat cat timp dialogul este activ.
+     */
     private DialogBox dialogBox = new DialogBox();
 
-    /*! \brief Retine daca dialogul de introducere al fiecarui nivel a fost afisat.
-        \details Index 1 = nivel 1, 2 = nivel 2, 3 = nivel 3, 4 = nivel 4.
-                 Previne reafisarea aceluiasi dialog la reintrarea in nivel (ex. TRY AGAIN).
-    */
+    /*!
+     * \brief Retine daca dialogul de introducere al fiecarui nivel a fost afisat.
+     * \details
+     * Index 1 = nivel 1, 2 = nivel 2, 3 = nivel 3, 4 = nivel 4.
+     * Previne reafisarea aceluiasi dialog la reintrarea in nivel (ex. TRY AGAIN).
+     */
     private boolean[] levelDialogShown = new boolean[5];
 
     // =========================================================================
     //  CONSTRUCTORI
     // =========================================================================
 
-    /*! \fn public Game(String title, int width, int height)
-        \brief Constructor pentru joc nou (fara save).
-
-        \param title  Titlul ferestrei.
-        \param width  Latimea ferestrei.
-        \param height Inaltimea ferestrei.
-    */
     public Game(String title, int width, int height) {
         this(title, width, height, false);
     }
 
-    /*! \fn public Game(String title, int width, int height, boolean loadSavedGame)
-        \brief Constructor general al jocului.
-
-        \param title         Titlul ferestrei.
-        \param width         Latimea ferestrei.
-        \param height        Inaltimea ferestrei.
-        \param loadSavedGame Daca este true, jocul porneste dintr-o salvare existenta.
-    */
     public Game(String title, int width, int height, boolean loadSavedGame) {
         wnd = new GameWindow(title, width, height);
         runState = false;
@@ -186,22 +210,11 @@ pentru a primi un dialog contextual in dungeon.
     //  INITIALIZARE
     // =========================================================================
 
-    /*! \fn private void InitGame()
-        \brief Initializeaza jocul si resursele de baza.
-
-        \details
-        Se construieste fereastra, se incarca asset-urile, se initializeaza
-        inputul si camera, iar apoi se incarca fie salvarea existenta,
-        fie primul nivel al jocului.
-
-        La initializare, DatabaseManager este pornit implicit la prima
-        salvare/incarcare de scor. Nu este nevoie de apel explicit aici.
-    */
     private void InitGame() {
         wnd.BuildGameWindow();
         Assets.Init();
 
-        currentLevel       = 1;
+        currentLevel = 1;
         transitionCooldown = 0;
 
         keyManager = new KeyManager();
@@ -213,40 +226,29 @@ pentru a primi un dialog contextual in dungeon.
 
         if (loadSavedGame) {
             savedGameState = SaveManager.loadGame();
+
             if (savedGameState != null) {
                 loadLevel(savedGameState.getLevel());
+
                 if (player != null) {
                     player.setPosition(savedGameState.getPlayerX(), savedGameState.getPlayerY());
                 }
 
-                /*
-                 * Dupa ce nivelul a fost incarcat si inamicii au fost creati,
-                 * restauram starea inamicilor invinsi din salvare.
-                 */
                 applyDefeatedEnemies(savedGameState);
-
-                /// Restauram scorul din save — jucatorul continua de unde a ramas.
                 score = savedGameState.getScore();
 
                 if (camera != null && map != null && player != null) {
                     camera.CenterOnPlayer(player, map);
                 }
 
-                /*
-                 * La Load Game, marcam dialogul nivelului incarcat ca deja afisat,
-                 * pentru a nu-l afisa din nou la continuarea sesiunii salvate.
-                 */
                 if (savedGameState.getLevel() >= 1 && savedGameState.getLevel() <= 4) {
                     levelDialogShown[savedGameState.getLevel()] = true;
                 }
-
             } else {
-                /// Save-ul nu a putut fi citit — pornim un joc nou de la nivelul 1.
                 currentLevel = 1;
                 loadLevel(currentLevel);
             }
         } else {
-            /// Joc nou — pornim intotdeauna de la nivelul 1.
             currentLevel = 1;
             loadLevel(currentLevel);
         }
@@ -256,15 +258,6 @@ pentru a primi un dialog contextual in dungeon.
     //  GAME LOOP
     // =========================================================================
 
-    /*! \fn public void run()
-        \brief Game-loop-ul principal.
-
-        \details
-        Ruleaza cat timp runState este activ si incearca sa mentina
-        actualizarea si randarea la aproximativ 60 FPS.
-        La finalul buclei, daca returnToMenuRequested este true,
-        inchide fereastra de joc si redeschide meniul principal.
-    */
     @Override
     public void run() {
         InitGame();
@@ -273,30 +266,39 @@ pentru a primi un dialog contextual in dungeon.
         long currentTime;
         final double timeFrame = 1_000_000_000.0 / 60.0;
 
-        int  frames = 0;
-        long timer  = System.currentTimeMillis();
+        int frames = 0;
+        long timer = System.currentTimeMillis();
 
         while (runState) {
             currentTime = System.nanoTime();
+
             if ((currentTime - oldTime) > timeFrame) {
                 Update();
-                if (!runState) break;
+
+                if (!runState) {
+                    break;
+                }
+
                 Draw();
                 oldTime = currentTime;
                 frames++;
             }
+
             if (System.currentTimeMillis() - timer >= 1000) {
                 currentFPS = frames;
-                frames     = 0;
-                timer     += 1000;
+                frames = 0;
+                timer += 1000;
             }
         }
 
-        /// La iesirea din bucla, daca s-a cerut revenirea la meniu, facem tranzitia.
         if (returnToMenuRequested) {
             SwingUtilities.invokeLater(() -> {
-                if (wnd != null) wnd.CloseWindow();
+                if (wnd != null) {
+                    wnd.CloseWindow();
+                }
+
                 Toolkit.getDefaultToolkit().sync();
+
                 SwingUtilities.invokeLater(() -> {
                     MenuWindow menu = new MenuWindow();
                     menu.setVisible(true);
@@ -305,26 +307,26 @@ pentru a primi un dialog contextual in dungeon.
         }
     }
 
-    /*! \fn public synchronized void StartGame()
-        \brief Porneste thread-ul principal al jocului.
-    */
     public synchronized void StartGame() {
         if (!runState) {
-            runState   = true;
+            runState = true;
             gameThread = new Thread(this);
             gameThread.start();
         }
     }
 
-    /*! \fn public synchronized void StopGame()
-        \brief Opreste jocul si asteapta terminarea thread-ului.
-    */
     public synchronized void StopGame() {
         if (runState) {
             runState = false;
-            if (Thread.currentThread() == gameThread) return;
+
+            if (Thread.currentThread() == gameThread) {
+                return;
+            }
+
             try {
-                if (gameThread != null) gameThread.join();
+                if (gameThread != null) {
+                    gameThread.join();
+                }
             } catch (InterruptedException ex) {
                 ex.printStackTrace();
             }
@@ -335,41 +337,24 @@ pentru a primi un dialog contextual in dungeon.
     //  SCOR
     // =========================================================================
 
-    /*! \fn public void addScore(int points)
-        \brief Adauga puncte la scorul curent si actualizeaza best score-ul in profil.
-
-        \param points Numarul de puncte de adaugat.
-    */
     public void addScore(int points) {
         score += points;
 
-        /// Actualizam best score-ul in profilul activ daca scorul curent il depaseste.
         PlayerProfile profile = ProfileManager.getActive();
         if (profile != null) {
             profile.setBestScore(score);
         }
     }
 
-    /*! \fn public int getScore()
-        \brief Returneaza scorul curent al sesiunii.
-        \return Scorul acumulat pana in acest moment.
-    */
-    public int getScore() { return score; }
+    public int getScore() {
+        return score;
+    }
 
     // =========================================================================
     //  AUDIO
     // =========================================================================
 
-    /*! \fn private void updateLevelMusic()
-        \brief Porneste soundtrack-ul potrivit pentru nivelul curent.
-
-        \details
-        Aceasta metoda este apelata cand se incarca un nivel nou.
-        Muzica de battle nu este pornita aici, ci separat, in functie
-        de apropierea jucatorului de inamici.
-    */
     private void updateLevelMusic() {
-        /// Cand incarcam un nivel nou, iesim automat din starea de lupta.
         inBattle = false;
 
         switch (currentLevel) {
@@ -381,63 +366,39 @@ pentru a primi un dialog contextual in dungeon.
         }
     }
 
-    /*! \fn private boolean isEnemyCloseForBattle(Entity enemy, float radius)
-        \brief Verifica daca un inamic este suficient de aproape pentru battle music.
-
-        \param enemy  Inamicul verificat.
-        \param radius Raza de detectie in pixeli.
-        \return true daca inamicul este viu si in raza jucatorului.
-    */
     private boolean isEnemyCloseForBattle(Entity enemy, float radius) {
-        if (player == null || enemy == null || enemy.isDead()) return false;
+        if (player == null || enemy == null || enemy.isDead()) {
+            return false;
+        }
 
-        float  dx       = player.GetFeetCenterX() - enemy.GetFeetCenterX();
-        float  dy       = player.GetFeetBottomY() - enemy.GetFeetBottomY();
+        float dx = player.GetFeetCenterX() - enemy.GetFeetCenterX();
+        float dy = player.GetFeetBottomY() - enemy.GetFeetBottomY();
         double distance = Math.sqrt(dx * dx + dy * dy);
 
-        /*
-         * Pornim muzica de battle fie daca inamicul este in raza,
-         * fie daca hitbox-urile se intersecteaza deja (combat activ).
-         */
         return distance <= radius || player.getFeetRect().intersects(enemy.getFeetRect());
     }
 
-    /*! \fn private boolean shouldPlayBattleMusic()
-        \brief Verifica daca in nivelul curent exista un inamic activ aproape de jucator.
-
-        \details
-        Verifica atat inamicii clasici (lup, schelet, paianjen),
-        cat si NPC-urile ostile (gardienii regali din Great Hall).
-
-        \return true daca trebuie pornita muzica de lupta.
-    */
     private boolean shouldPlayBattleMusic() {
-        if (isEnemyCloseForBattle(wolf,     220) ||
-            isEnemyCloseForBattle(skeleton, 220) ||
-            isEnemyCloseForBattle(spider,   220)) {
+        if (isEnemyCloseForBattle(wolf, 220) ||
+                isEnemyCloseForBattle(wolf2, 220) ||
+                isEnemyCloseForBattle(wolf3, 220) ||
+                isEnemyCloseForBattle(skeleton, 220) ||
+                isEnemyCloseForBattle(skeleton2, 220) ||
+                isEnemyCloseForBattle(skeleton3, 220) ||
+                isEnemyCloseForBattle(spider, 220) ||
+                isEnemyCloseForBattle(malakar, 260)) {
             return true;
         }
 
-        /*
-         * In Great Hall, cavalerii/gardienii sunt in lista npcs,
-         * nu in variabilele wolf/skeleton/spider.
-         * De aceea trebuie verificati separat.
-         */
         for (NPC npc : npcs) {
             if (npc != null && npc.isGuardActive() && isEnemyCloseForBattle(npc, 220)) {
                 return true;
             }
         }
+
         return false;
     }
 
-    /*! \fn private void updateBattleMusic()
-        \brief Schimba muzica intre tema nivelului si tema de lupta.
-
-        \details
-        Daca jucatorul se apropie de un inamic, pornim battle_theme.
-        Cand nu mai exista inamic viu aproape, revenim la muzica nivelului curent.
-    */
     private void updateBattleMusic() {
         if (isDeathScreen || player == null || player.isDead()) {
             inBattle = false;
@@ -450,6 +411,7 @@ pentru a primi un dialog contextual in dungeon.
             inBattle = true;
             AudioManager.getInstance().playMusic("res/audio/battle_theme.wav");
         }
+
         if (!shouldBeInBattle && inBattle) {
             inBattle = false;
             updateLevelMusic();
@@ -460,85 +422,96 @@ pentru a primi un dialog contextual in dungeon.
     //  UPDATE
     // =========================================================================
 
-    /*! \fn private void Update()
-        \brief Actualizeaza starea jocului pentru un frame.
-
-        \details
-        Trateaza inputul, dialogul narativ, meniul de pauza, miscarea entitatilor,
-        combat-ul, camera si tranzitiile intre niveluri.
-
-        Ordinea de prioritate:
-        1. Death screen (cel mai prioritar — blocheaza tot)
-        2. DialogBox activ (blocheaza update-ul jocului, doar SPACE e procesat)
-        3. Meniu pauza (blocheaza update entitatile)
-        4. Update normal al jocului
-    */
     private void Update() {
         keyManager.Update();
 
-        /// 1. Ecranul de moarte are prioritate maxima.
         if (isDeathScreen) {
             updateDeathScreen();
             return;
         }
 
-        /// 2. Cat timp un dialog narativ este activ, jocul este pauzat.
-        ///    Doar tasta SPACE este procesata pentru a avansa/inchide dialogul.
         if (dialogBox.isActive()) {
             boolean currentSpaceState = keyManager.space;
+
             if (currentSpaceState && !lastSpaceState) {
                 dialogBox.hide();
             }
+
             lastSpaceState = currentSpaceState;
             return;
         }
 
-        /// Comutare mod debug cu tasta dedicata.
         if (keyManager.debug && !lastDebugState) {
             showHitboxes = !showHitboxes;
         }
         lastDebugState = keyManager.debug;
 
-        /// Comutare pauza cu ESC.
         if (keyManager.escape && !lastEscapeState) {
             isPaused = !isPaused;
         }
         lastEscapeState = keyManager.escape;
 
-        /// Daca jocul este in pauza, actualizam doar navigarea prin meniu.
         if (isPaused) {
             if (keyManager.up && !lastUpState) {
                 pauseMenuSelection--;
-                if (pauseMenuSelection < 0) pauseMenuSelection = 3;
+                if (pauseMenuSelection < 0) {
+                    pauseMenuSelection = 3;
+                }
             }
+
             if (keyManager.down && !lastDownState) {
                 pauseMenuSelection++;
-                if (pauseMenuSelection > 3) pauseMenuSelection = 0;
+                if (pauseMenuSelection > 3) {
+                    pauseMenuSelection = 0;
+                }
             }
+
             if (keyManager.enter && !lastEnterState) {
                 executePauseMenuAction();
             }
-            lastUpState    = keyManager.up;
-            lastDownState  = keyManager.down;
+
+            lastUpState = keyManager.up;
+            lastDownState = keyManager.down;
             lastEnterState = keyManager.enter;
             return;
         }
 
-        /// Actualizare entitati.
-        if (player != null && map != null) player.Update(keyManager, map);
-        if (wolf     != null && map != null) wolf.Update(map);
+        if (player != null && map != null) {
+            player.Update(keyManager, map);
+        }
+
+        if (wolf != null && map != null) wolf.Update(map);
+        if (wolf2 != null && map != null) wolf2.Update(map);
+        if (wolf3 != null && map != null) wolf3.Update(map);
+
         if (skeleton != null && map != null) skeleton.Update(map);
-        if (spider   != null && map != null) spider.Update(map);
+        if (skeleton2 != null && map != null) skeleton2.Update(map);
+        if (skeleton3 != null && map != null) skeleton3.Update(map);
+
+        if (spider != null && map != null) {
+            spider.Update(map);
+        }
 
         /*!
-         * Interactiunea cu magicianul din nivelul 2.
-         *
-         * Folosim ENTER pentru deschiderea dialogului, deoarece SPACE este deja
-         * rezervat pentru inchiderea dialogurilor active.
-         *
-         * Detectia este de tip edge-triggered: dialogul se deschide doar la
-         * apasarea initiala a tastei, nu la mentinerea ei apasata.
+         * \brief Update separat pentru boss.
+         * \details
+         * Malakar are AI proprie si nu face parte din lista generica de NPC-uri,
+         * asa ca trebuie actualizat explicit in game loop.
          */
+        if (malakar != null && map != null) {
+            malakar.Update(map);
+        }
+
+        if (dungeonWizard != null) {
+            dungeonWizard.Update();
+        }
+
+        if (map != null) {
+            for (NPC npc : npcs) {
+                npc.Update(map);
+            }
+        }
+
         if (dungeonWizard != null && keyManager.enter && !lastEnterState && dungeonWizard.canInteract()) {
             dialogBox.show(
                     "The Mad Magician",
@@ -553,33 +526,28 @@ pentru a primi un dialog contextual in dungeon.
             return;
         }
 
-        /// Camera urmareste jucatorul activ.
         if (camera != null && player != null && map != null) {
             camera.CenterOnPlayer(player, map);
         }
 
-        /// Scadem cooldown-ul pentru schimbarea de nivel.
-        if (transitionCooldown > 0) transitionCooldown--;
+        if (transitionCooldown > 0) {
+            transitionCooldown--;
+        }
 
-        /// Detectam tentativele de intrare ilegala pe harta (Bad Entrance).
         if (isBadEntranceAttempt()) {
             openDeathScreen("BAD ENTRANCE");
             return;
         }
 
-        /// Verificam tranzitiile si combat-ul.
         checkLevelTransition();
-        if (player != null) checkCombat();
+        if (player != null) {
+            checkCombat();
+        }
 
-        /*
-         * Actualizam soundtrack-ul de battle dupa combat.
-         * Daca jucatorul este aproape de un inamic viu, pornim muzica de lupta.
-         * Daca se indeparteaza sau inamicul moare, revenim la tema nivelului.
-         */
         updateBattleMusic();
 
-        lastUpState    = keyManager.up;
-        lastDownState  = keyManager.down;
+        lastUpState = keyManager.up;
+        lastDownState = keyManager.down;
         lastEnterState = keyManager.enter;
     }
 
@@ -587,52 +555,52 @@ pentru a primi un dialog contextual in dungeon.
     //  DIALOG NARATIV
     // =========================================================================
 
-    /*! \fn private void showLevelDialog(int level)
-        \brief Afiseaza dialogul narativ de introducere pentru nivelul specificat.
-
-        \details
-        Dialogul este afisat o singura data per sesiune de joc pentru fiecare nivel.
-        La Load Game, nivelul restaurat isi marcheaza automat dialogul ca afisat,
-        astfel incat sa nu deranjeze jucatorul care continua o sesiune salvata.
-        Jocul este pauzat automat cat timp dialogul este activ (tratat in Update()).
-
-        \param level Nivelul pentru care se afiseaza dialogul (1-4).
-    */
     private void showLevelDialog(int level) {
-        if (level < 1 || level > 4) return;
-        if (levelDialogShown[level]) return;
+        if (level < 1 || level > 4) {
+            return;
+        }
+
+        if (levelDialogShown[level]) {
+            return;
+        }
 
         levelDialogShown[level] = true;
 
         switch (level) {
             case 1 -> dialogBox.show(
-                "Chapter I  —  The Cursed Forest",
-                "The kingdom of Aethelgard has fallen into darkness.",
-                "You are its last loyal knight. The key to the ruins awaits.",
-                "Beware — the forest is not as empty as it seems.",
-                "[ SPACE ]  Continue"
+                    "Chapter I  —  The Cursed Forest",
+                    "The kingdom of Aethelgard has fallen into darkness.",
+                    "You are its last loyal knight. The key to the ruins awaits.",
+                    "Beware — the forest is not as empty as it seems.",
+                    "[ SPACE ]  Continue"
             );
+
             case 2 -> dialogBox.show(
-                "Chapter II  —  Beneath the Castle",
-                "The dungeon holds secrets older than the kingdom itself.",
-                "A spirit guardian blocks the path forward.",
-                "Find the artifact that opens the Great Hall.",
-                "[ SPACE ]  Continue"
+                    "Chapter II  —  Beneath the Castle",
+                    "The dungeon holds secrets older than the kingdom itself.",
+                    "A spirit guardian blocks the path forward.",
+                    "Find the artifact that opens the Great Hall.",
+                    "[ SPACE ]  Continue"
             );
+
             case 3 -> dialogBox.show(
-                "Chapter III  —  The Cursed Village",
-                "The village surrounding the castle has been corrupted.",
-                "Shadows stir between the houses. Trust no one.",
-                "The gates to the Great Hall lie ahead.",
-                "[ SPACE ]  Continue"
+                    "Chapter III  —  The Cursed Village",
+                    "The village surrounding the castle has been corrupted.",
+                    "Shadows stir between the houses. Trust no one.",
+                    "The gates to the Great Hall lie ahead.",
+                    "[ SPACE ]  Continue"
             );
+
             case 4 -> dialogBox.show(
-                "Chapter IV  —  The Great Hall",
-                "This is where it ends.",
-                "The fallen crown lies beyond the royal guards.",
-                "For Aethelgard. Reclaim what was lost.",
-                "[ SPACE ]  Continue"
+                    "Chapter IV  —  The Great Hall",
+                    "This is where it ends.",
+                    "The fallen crown lies beyond the royal guards.",
+                    "For Aethelgard. Reclaim what was lost.",
+                    "[ SPACE ]  Continue"
             );
+
+            default -> {
+            }
         }
     }
 
@@ -640,80 +608,167 @@ pentru a primi un dialog contextual in dungeon.
     //  COMBAT
     // =========================================================================
 
-    /*! \fn private void checkCombat()
-        \brief Verifica interactiunile de lupta dintre jucator si inamici.
-
-        \details
-        Damage-ul este ajustat in functie de dificultatea aleasa in Settings.
-        Pe EASY, playerul loveste mai tare si primeste mai putin damage.
-        Pe HARD, playerul loveste mai slab si primeste mai mult damage.
-
-        Scorul este acordat o singura data per inamic (flag isScoreAwarded).
-    */
     private void checkCombat() {
-        if (player == null || player.isDead()) return;
+        if (player == null || player.isDead()) {
+            return;
+        }
 
-        Rectangle playerAtk  = player.getAttackHitbox();
+        Rectangle playerAtk = player.getAttackHitbox();
         Rectangle playerFeet = player.getFeetRect();
 
-        int playerAttackDamage   = GameSettings.getPlayerDamage(Player.ATTACK_DAMAGE);
-        int wolfAttackDamage     = GameSettings.getEnemyDamage(Enemy.ATTACK_DAMAGE);
-        int skeletonAttackDamage = GameSettings.getEnemyDamage(Skeleton.ATTACK_DAMAGE);
-        int spiderWebDamage      = GameSettings.getEnemyDamage(Spider.WEB_DAMAGE);
-        int guardAttackDamage    = GameSettings.getEnemyDamage(NPC.GUARD_ATTACK_DAMAGE);
+        int playerAttackDamage = GameSettings.getPlayerDamage(Player.ATTACK_DAMAGE);
 
-        /// Jucatorul ataca inamicii cu hitbox-ul de atac.
+        int wolfAttackDamage = GameSettings.getEnemyDamage(Enemy.ATTACK_DAMAGE);
+        int skeletonAttackDamage = GameSettings.getEnemyDamage(Skeleton.ATTACK_DAMAGE);
+        int spiderWebDamage = GameSettings.getEnemyDamage(Spider.WEB_DAMAGE);
+        int guardAttackDamage = GameSettings.getEnemyDamage(NPC.GUARD_ATTACK_DAMAGE);
+
+        /*!
+         * \brief Damage pentru boss Malakar.
+         * \details
+         * Folosim doua valori separate, deoarece boss-ul are doua tipuri de atac.
+         * In versiunea actuala, Attack1 este aplicat la contact direct,
+         * iar Attack2 este pregatit pentru extindere ulterioara.
+         */
+        int malakarAttack1Damage = GameSettings.getEnemyDamage(Malakar.ATTACK1_DAMAGE);
+        int malakarAttack2Damage = GameSettings.getEnemyDamage(Malakar.ATTACK2_DAMAGE);
+
         if (playerAtk != null) {
-            if (wolf     != null && !wolf.isDead()     && playerAtk.intersects(wolf.getFeetRect()))
+            if (wolf != null && !wolf.isDead() && playerAtk.intersects(wolf.getFeetRect())) {
                 wolf.takeDamage(playerAttackDamage);
-            if (skeleton != null && !skeleton.isDead() && playerAtk.intersects(skeleton.getFeetRect()))
+            }
+            if (wolf2 != null && !wolf2.isDead() && playerAtk.intersects(wolf2.getFeetRect())) {
+                wolf2.takeDamage(playerAttackDamage);
+            }
+            if (wolf3 != null && !wolf3.isDead() && playerAtk.intersects(wolf3.getFeetRect())) {
+                wolf3.takeDamage(playerAttackDamage);
+            }
+
+            if (skeleton != null && !skeleton.isDead() && playerAtk.intersects(skeleton.getFeetRect())) {
                 skeleton.takeDamage(playerAttackDamage);
-            if (spider   != null && !spider.isDead()   && playerAtk.intersects(spider.getFeetRect()))
+            }
+            if (skeleton2 != null && !skeleton2.isDead() && playerAtk.intersects(skeleton2.getFeetRect())) {
+                skeleton2.takeDamage(playerAttackDamage);
+            }
+            if (skeleton3 != null && !skeleton3.isDead() && playerAtk.intersects(skeleton3.getFeetRect())) {
+                skeleton3.takeDamage(playerAttackDamage);
+            }
+
+            if (spider != null && !spider.isDead() && playerAtk.intersects(spider.getFeetRect())) {
                 spider.takeDamage(playerAttackDamage);
+            }
+
+            /*!
+             * \brief Playerul poate lovi boss-ul daca hitbox-ul de atac il intersecteaza.
+             * \details
+             * Malakar foloseste tot getFeetRect(), astfel ramane compatibil cu
+             * sistemul deja existent de combat din joc.
+             */
+            if (malakar != null && !malakar.isDead() && playerAtk.intersects(malakar.getFeetRect())) {
+                malakar.takeDamage(playerAttackDamage);
+            }
+
             for (NPC npc : npcs) {
-                if (npc != null && npc.canBeAttacked() && playerAtk.intersects(npc.getFeetRect()))
+                if (npc != null && npc.canBeAttacked() && playerAtk.intersects(npc.getFeetRect())) {
                     npc.takeDamage(playerAttackDamage);
+                }
             }
         }
 
-        /// Inamicii lovesc jucatorul prin contact direct (coliziune picioare).
-        if (wolf     != null && !wolf.isDead()     && playerFeet.intersects(wolf.getFeetRect()))
+        if (wolf != null && !wolf.isDead() && playerFeet.intersects(wolf.getFeetRect())) {
             player.takeDamage(wolfAttackDamage);
-        if (skeleton != null && !skeleton.isDead() && playerFeet.intersects(skeleton.getFeetRect()))
-            player.takeDamage(skeletonAttackDamage);
+        }
+        if (wolf2 != null && !wolf2.isDead() && playerFeet.intersects(wolf2.getFeetRect())) {
+            player.takeDamage(wolfAttackDamage);
+        }
+        if (wolf3 != null && !wolf3.isDead() && playerFeet.intersects(wolf3.getFeetRect())) {
+            player.takeDamage(wolfAttackDamage);
+        }
 
-        /// Paianjenul loveste prin proiectil (panza).
+        if (skeleton != null && !skeleton.isDead() && playerFeet.intersects(skeleton.getFeetRect())) {
+            player.takeDamage(skeletonAttackDamage);
+        }
+        if (skeleton2 != null && !skeleton2.isDead() && playerFeet.intersects(skeleton2.getFeetRect())) {
+            player.takeDamage(skeletonAttackDamage);
+        }
+        if (skeleton3 != null && !skeleton3.isDead() && playerFeet.intersects(skeleton3.getFeetRect())) {
+            player.takeDamage(skeletonAttackDamage);
+        }
+
+        /*!
+         * \brief Atacul de baza al lui Malakar.
+         * \details
+         * In aceasta varianta minima, boss-ul loveste prin contact direct.
+         * Daca vrei mai tarziu, poti separa momentul exact al impactului pe frame-ul
+         * de animatie sau poti activa Attack2 conditionat de starea boss-ului.
+         */
+        if (malakar != null && !malakar.isDead() && playerFeet.intersects(malakar.getFeetRect())) {
+            if (malakar.isUsingAttack2()) {
+                player.takeDamage(malakarAttack2Damage);
+            } else {
+                player.takeDamage(malakarAttack1Damage);
+            }
+        }
+
         if (spider != null && !spider.isDead() && spider.isWebActive()) {
-            float wx = spider.getWebX(), wy = spider.getWebY();
-            float px = player.GetFeetCenterX(), py = player.GetFeetBottomY();
+            float wx = spider.getWebX();
+            float wy = spider.getWebY();
+            float px = player.GetFeetCenterX();
+            float py = player.GetFeetBottomY();
+
             double dist = Math.sqrt((wx - px) * (wx - px) + (wy - py) * (wy - py));
+
             if (dist < 16) {
                 player.takeDamage(spiderWebDamage);
                 spider.deactivateWeb();
             }
         }
 
-        /// Gardienii NPC lovesc jucatorul daca sunt in raza de atac.
         for (NPC npc : npcs) {
-            if (npc != null && npc.canDamagePlayer(player))
+            if (npc != null && npc.canDamagePlayer(player)) {
                 player.takeDamage(guardAttackDamage);
+            }
         }
 
-        /// Acorda scor o singura data la moartea fiecarui inamic.
-        if (wolf     != null && wolf.isDead()     && !wolf.isScoreAwarded()) {
+        if (wolf != null && wolf.isDead() && !wolf.isScoreAwarded()) {
             addScore(GameSettings.SCORE_WOLF_KILLED);
             wolf.setScoreAwarded(true);
         }
+        if (wolf2 != null && wolf2.isDead() && !wolf2.isScoreAwarded()) {
+            addScore(GameSettings.SCORE_WOLF_KILLED);
+            wolf2.setScoreAwarded(true);
+        }
+        if (wolf3 != null && wolf3.isDead() && !wolf3.isScoreAwarded()) {
+            addScore(GameSettings.SCORE_WOLF_KILLED);
+            wolf3.setScoreAwarded(true);
+        }
+
         if (skeleton != null && skeleton.isDead() && !skeleton.isScoreAwarded()) {
             addScore(GameSettings.SCORE_SKELETON_KILLED);
             skeleton.setScoreAwarded(true);
         }
-        if (spider   != null && spider.isDead()   && !spider.isScoreAwarded()) {
+        if (skeleton2 != null && skeleton2.isDead() && !skeleton2.isScoreAwarded()) {
+            addScore(GameSettings.SCORE_SKELETON_KILLED);
+            skeleton2.setScoreAwarded(true);
+        }
+        if (skeleton3 != null && skeleton3.isDead() && !skeleton3.isScoreAwarded()) {
+            addScore(GameSettings.SCORE_SKELETON_KILLED);
+            skeleton3.setScoreAwarded(true);
+        }
+
+        if (spider != null && spider.isDead() && !spider.isScoreAwarded()) {
             addScore(GameSettings.SCORE_SPIDER_KILLED);
             spider.setScoreAwarded(true);
         }
 
-        /// Acorda scor pentru NPC-urile ostile eliminate (gardienii regali din Great Hall).
+        /*!
+         * \brief Acordam scor pentru boss o singura data.
+         */
+        if (malakar != null && malakar.isDead() && !malakar.isScoreAwarded()) {
+            addScore(500);
+            malakar.setScoreAwarded(true);
+        }
+
         for (int i = 0; i < npcs.size(); i++) {
             NPC npc = npcs.get(i);
             if (npc != null && npc.isDefeated() && !npc.isScoreAwarded()) {
@@ -722,7 +777,6 @@ pentru a primi un dialog contextual in dungeon.
             }
         }
 
-        /// Daca jucatorul moare, afisam ecranul de retry.
         if (player.isDead()) {
             openDeathScreen();
         }
@@ -732,108 +786,83 @@ pentru a primi un dialog contextual in dungeon.
     //  ECRAN DE MOARTE
     // =========================================================================
 
-    /*! \fn private void openDeathScreen()
-        \brief Deschide ecranul de moarte fara subtitlu.
-    */
     private void openDeathScreen() {
         openDeathScreen("");
     }
 
-    /*! \fn private void openDeathScreen(String subtitle)
-        \brief Deschide ecranul de moarte cu subtitlul specificat.
-
-        \param subtitle Textul afisat sub "YOU DIED" (ex. "BAD ENTRANCE").
-    */
     private void openDeathScreen(String subtitle) {
-        deathLevel         = currentLevel;
+        deathLevel = currentLevel;
         deathMenuSelection = 0;
-        deathSubtitle      = subtitle;
-        isDeathScreen      = true;
-        isPaused           = false;
+        deathSubtitle = subtitle;
+        isDeathScreen = true;
+        isPaused = false;
 
         AudioManager.getInstance().stopMusic();
         inBattle = false;
 
-        if (keyManager != null) keyManager.Clear();
-        lastUpState     = false;
-        lastDownState   = false;
-        lastEnterState  = false;
+        if (keyManager != null) {
+            keyManager.Clear();
+        }
+
+        lastUpState = false;
+        lastDownState = false;
+        lastEnterState = false;
         lastEscapeState = false;
-        lastSpaceState  = false;
+        lastSpaceState = false;
     }
 
-    /*! \fn private void updateDeathScreen()
-        \brief Gestioneaza navigarea in meniul afisat dupa moarte.
-
-        \details
-        Navigare cu sus/jos, confirmare cu Enter.
-
-        FIX: "score = 0" a fost ELIMINAT din aceasta metoda.
-        Anterior era plasat in afara if-ului de Enter, deci se executa la
-        FIECARE FRAME cat timp ecranul de moarte era activ, resetand scorul
-        la 0 inainte de orice actiune a jucatorului.
-        Acum scorul este resetat EXCLUSIV in executeDeathMenuAction(),
-        doar la selectia TRY AGAIN (deathMenuSelection == 0).
-    */
     private void updateDeathScreen() {
         if (keyManager.up && !lastUpState) {
             deathMenuSelection--;
-            if (deathMenuSelection < 0) deathMenuSelection = 1;
+            if (deathMenuSelection < 0) {
+                deathMenuSelection = 1;
+            }
         }
+
         if (keyManager.down && !lastDownState) {
             deathMenuSelection++;
-            if (deathMenuSelection > 1) deathMenuSelection = 0;
+            if (deathMenuSelection > 1) {
+                deathMenuSelection = 0;
+            }
         }
+
         if (keyManager.enter && !lastEnterState) {
             executeDeathMenuAction();
         }
-        lastUpState    = keyManager.up;
-        lastDownState  = keyManager.down;
+
+        lastUpState = keyManager.up;
+        lastDownState = keyManager.down;
         lastEnterState = keyManager.enter;
     }
 
-    /*! \fn private void executeDeathMenuAction()
-        \brief Executa actiunea selectata in ecranul de moarte.
-
-        \details
-        TRY AGAIN (deathMenuSelection == 0):
-        - Reseteaza scorul la 0 — sesiunea noua incepe curat.
-          FIX: score = 0 este acum AICI, nu in updateDeathScreen() unde
-          era executat la fiecare frame, corupand scorul inainte de orice save.
-        - Reinitializeaza jucatorul si reincarca nivelul in care a murit.
-        - Reseteaza flagul de dialog al nivelului pentru a reafisa introducerea.
-
-        EXIT GAME (deathMenuSelection == 1):
-        - Opreste muzica, inchide conexiunea DB corect, iese din aplicatie.
-    */
     private void executeDeathMenuAction() {
         if (deathMenuSelection == 0) {
-            /// TRY AGAIN — resetam scorul: noua sesiune incepe de la 0.
             score = 0;
             isDeathScreen = false;
 
-            /*
-             * Resetam dialogul nivelului pentru ca jucatorul sa il revada
-             * la TRY AGAIN — face experienta mai imersiva la retry.
-             * Comenteaza linia de mai jos daca preferi sa NU se reafiseze.
-             */
             if (deathLevel >= 1 && deathLevel <= 4) {
                 levelDialogShown[deathLevel] = false;
             }
 
             player = new Player(0, 0);
             loadLevel(deathLevel);
+
             if (keyManager != null) {
                 keyManager.Clear();
-                lastUpState    = false;
-                lastDownState  = false;
-                lastEnterState = false;
-                lastSpaceState = false;
             }
+
+            lastUpState = false;
+            lastDownState = false;
+            lastEnterState = false;
+            lastSpaceState = false;
         } else {
-            /// EXIT GAME — oprim muzica, inchidem DB corect, iesim.
             AudioManager.getInstance().stopMusic();
-            try { DatabaseManager.getInstance().closeConnection(); } catch (Exception ignored) {}
+
+            try {
+                DatabaseManager.getInstance().closeConnection();
+            } catch (Exception ignored) {
+            }
+
             System.exit(0);
         }
     }
@@ -842,14 +871,7 @@ pentru a primi un dialog contextual in dungeon.
     //  MENIU PAUZA
     // =========================================================================
 
-    /*! \fn private void executePauseMenuAction()
-        \brief Executa actiunea selectata in meniul de pauza.
-
-        \details
-        Optiunile sunt: SETTINGS (0), SAVE GAME (1), RETURN TO MENU (2), EXIT (3).
-    */
     private void executePauseMenuAction() {
-        /// Feedback audio scurt pentru selectia din meniul de pauza.
         AudioManager.getInstance().playSoundEffect("res/audio/button_click.wav");
 
         switch (pauseMenuSelection) {
@@ -861,8 +883,15 @@ pentru a primi un dialog contextual in dungeon.
             case 2 -> returnToMainMenu();
             case 3 -> {
                 AudioManager.getInstance().stopMusic();
-                try { DatabaseManager.getInstance().closeConnection(); } catch (Exception ignored) {}
+
+                try {
+                    DatabaseManager.getInstance().closeConnection();
+                } catch (Exception ignored) {
+                }
+
                 System.exit(0);
+            }
+            default -> {
             }
         }
     }
@@ -871,141 +900,129 @@ pentru a primi un dialog contextual in dungeon.
     //  SALVARE
     // =========================================================================
 
-    /*! \fn private void appendDefeatedId(StringBuilder builder, String id)
-        \brief Adauga un ID de inamic invins in lista salvata.
-
-        \param builder StringBuilder-ul in care se construieste lista.
-        \param id      ID-ul inamicului invins (ex. "wolf", "npc0").
-    */
     private void appendDefeatedId(StringBuilder builder, String id) {
-        if (builder.length() > 0) builder.append(",");
+        if (builder.length() > 0) {
+            builder.append(",");
+        }
         builder.append(id);
     }
 
-    /*! \fn private String getDefeatedEnemiesForSave()
-        \brief Construieste lista inamicilor invinsi din nivelul curent.
-
-        \details
-        Lista este salvata in fisierul .properties.
-        Exemple: "wolf", "skeleton", "spider", "npc0,npc1".
-
-        \return Lista de ID-uri separate prin virgula.
-    */
     private String getDefeatedEnemiesForSave() {
         StringBuilder defeated = new StringBuilder();
 
-        if (wolf     != null && wolf.isDead())     appendDefeatedId(defeated, "wolf");
-        if (skeleton != null && skeleton.isDead()) appendDefeatedId(defeated, "skeleton");
-        if (spider   != null && spider.isDead())   appendDefeatedId(defeated, "spider");
+        if (wolf != null && wolf.isDead()) appendDefeatedId(defeated, "wolf");
+        if (wolf2 != null && wolf2.isDead()) appendDefeatedId(defeated, "wolf2");
+        if (wolf3 != null && wolf3.isDead()) appendDefeatedId(defeated, "wolf3");
 
-        /*
-         * NPC-urile sunt salvate dupa pozitia lor in lista.
-         * In Great Hall, npc0, npc1, npc2, npc3 sunt gardienii regali.
+        if (skeleton != null && skeleton.isDead()) appendDefeatedId(defeated, "skeleton");
+        if (skeleton2 != null && skeleton2.isDead()) appendDefeatedId(defeated, "skeleton2");
+        if (skeleton3 != null && skeleton3.isDead()) appendDefeatedId(defeated, "skeleton3");
+
+        if (spider != null && spider.isDead()) appendDefeatedId(defeated, "spider");
+
+        /*!
+         * \brief Salvam starea boss-ului separat.
+         * \details
+         * Daca Malakar a fost invins, il marcam explicit in save pentru ca la
+         * Load Game sa nu mai reapara in level 4.
          */
+        if (malakar != null && malakar.isDead()) appendDefeatedId(defeated, "malakar");
+
         for (int i = 0; i < npcs.size(); i++) {
             NPC npc = npcs.get(i);
-            if (npc != null && npc.isDefeated()) appendDefeatedId(defeated, "npc" + i);
+            if (npc != null && npc.isDefeated()) {
+                appendDefeatedId(defeated, "npc" + i);
+            }
         }
 
         return defeated.toString();
     }
 
-    /*! \fn private void applyDefeatedEnemies(SaveGameState state)
-        \brief Restaureaza starea inamicilor invinsi dupa Load Game.
-
-        \details
-        Dupa incarcarea nivelului, inamicii sunt creati din nou.
-        Aceasta metoda ii marcheaza drept morti/invinsi pe cei care existau
-        in lista salvata, astfel incat nu mai apar pe harta.
-
-        \param state Starea incarcata din save file.
-    */
     private void applyDefeatedEnemies(SaveGameState state) {
-        if (state == null) return;
+        if (state == null) {
+            return;
+        }
 
-        if (wolf     != null && state.isEnemyDefeated("wolf"))     wolf.forceDead();
+        if (wolf != null && state.isEnemyDefeated("wolf")) wolf.forceDead();
+        if (wolf2 != null && state.isEnemyDefeated("wolf2")) wolf2.forceDead();
+        if (wolf3 != null && state.isEnemyDefeated("wolf3")) wolf3.forceDead();
+
         if (skeleton != null && state.isEnemyDefeated("skeleton")) skeleton.forceDead();
-        if (spider   != null && state.isEnemyDefeated("spider"))   spider.forceDead();
+        if (skeleton2 != null && state.isEnemyDefeated("skeleton2")) skeleton2.forceDead();
+        if (skeleton3 != null && state.isEnemyDefeated("skeleton3")) skeleton3.forceDead();
+
+        if (spider != null && state.isEnemyDefeated("spider")) spider.forceDead();
+
+        /*!
+         * \brief Restauram starea boss-ului dupa Load Game.
+         * \details
+         * Daca Malakar era deja invins in save, il fortam direct in starea dead.
+         */
+        if (malakar != null && state.isEnemyDefeated("malakar")) malakar.forceDead();
 
         for (int i = 0; i < npcs.size(); i++) {
             NPC npc = npcs.get(i);
-            if (npc != null && state.isEnemyDefeated("npc" + i)) npc.forceDefeatedState();
+            if (npc != null && state.isEnemyDefeated("npc" + i)) {
+                npc.forceDefeatedState();
+            }
         }
     }
 
-    /*! \fn private void saveCurrentGame(boolean showMessage)
-        \brief Salveaza progresul curent in fisierul .properties SI in baza de date.
-
-        \details
-        Salveaza nivelul, pozitia, inamicii invinsi si scorul in SaveManager.
-        Simultan, insereaza scorul curent in baza de date SQLite prin
-        DatabaseManager, pentru a aparea in leaderboard.
-        Eroarea de DB este tratata non-fatal: jocul continua chiar daca
-        baza de date nu este disponibila.
-
-        \param showMessage Daca este true, afiseaza mesaj de confirmare Swing.
-    */
     private void saveCurrentGame(boolean showMessage) {
         try {
             if (player == null) {
                 throw new InvalidGameStateException(
-                    "Nu se poate salva jocul: playerul nu exista."
+                        "Nu se poate salva jocul: playerul nu exista."
                 );
             }
 
-            /// Salvam in fisierul .properties (save clasic).
             SaveManager.saveGame(
-                currentLevel,
-                player.GetX(),
-                player.GetY(),
-                getDefeatedEnemiesForSave(),
-                score
+                    currentLevel,
+                    player.GetX(),
+                    player.GetY(),
+                    getDefeatedEnemiesForSave(),
+                    score
             );
 
-            /// Salvam scorul si in baza de date SQLite pentru leaderboard.
             try {
                 PlayerProfile profile = ProfileManager.getActive();
                 String name = (profile != null) ? profile.getName() : "Anonim";
+
                 DatabaseManager.getInstance().insertScore(name, score, currentLevel);
-                System.out.println("DB: scor salvat — " + name + " | " + score + " pts | nivel " + currentLevel);
+
+                System.out.println(
+                        "DB: scor salvat — " + name + " | " + score + " pts | nivel " + currentLevel
+                );
             } catch (DatabaseException dbEx) {
-                /// Eroare non-fatala: jocul continua chiar daca DB nu e disponibil.
                 System.out.println("DB: eroare la salvarea scorului — " + dbEx.getMessage());
             }
 
-            /// Redam un efect sonor scurt pentru confirmare vizuala a salvarii.
             AudioManager.getInstance().playSoundEffect("res/audio/save_theme.wav");
 
             if (showMessage) {
                 SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
-                    null,
-                    "Jocul a fost salvat cu succes.",
-                    "Save Game",
-                    JOptionPane.INFORMATION_MESSAGE
+                        null,
+                        "Jocul a fost salvat cu succes.",
+                        "Save Game",
+                        JOptionPane.INFORMATION_MESSAGE
                 ));
             }
 
         } catch (InvalidGameStateException e) {
             System.out.println(e.getMessage());
+
             if (showMessage) {
                 SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
-                    null,
-                    e.getMessage(),
-                    "Save Game Error",
-                    JOptionPane.ERROR_MESSAGE
+                        null,
+                        e.getMessage(),
+                        "Save Game Error",
+                        JOptionPane.ERROR_MESSAGE
                 ));
             }
         }
     }
 
-    /*! \fn private void returnToMainMenu()
-        \brief Cere revenirea in meniul principal si opreste jocul.
-    */
     private void returnToMainMenu() {
-        /*
-         * Oprim muzica nivelului/battle inainte de revenirea la meniu.
-         * MenuWindow va porni din nou menu_theme.wav in constructor.
-         */
         AudioManager.getInstance().stopMusic();
         returnToMenuRequested = true;
         runState = false;
@@ -1015,46 +1032,19 @@ pentru a primi un dialog contextual in dungeon.
     //  DRAW
     // =========================================================================
 
-    /*! \fn private void drawCinematicOverlay(Graphics2D g2d)
-        \brief Deseneaza un efect vizual cinematic peste joc.
-
-        \details
-        Activat din Settings prin GameSettings.cinematicMode.
-        Nu afecteaza logica jocului, doar atmosfera vizuala.
-        Adauga doua benzi negre (sus si jos) si o umbra subtila.
-    */
     private void drawCinematicOverlay(Graphics2D g2d) {
-        /// Umbra subtila peste scena pentru adancime vizuala.
         g2d.setColor(new Color(0, 0, 0, 35));
         g2d.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
 
-        /// Benzi cinematice sus si jos (stilul letterbox).
         g2d.setColor(new Color(0, 0, 0, 170));
-        g2d.fillRect(0, 0,                  LOGICALWIDTH, 42);
+        g2d.fillRect(0, 0, LOGICALWIDTH, 42);
         g2d.fillRect(0, LOGICALHEIGHT - 42, LOGICALWIDTH, 42);
     }
 
-    /*! \fn private void Draw()
-        \brief Randeaza cadrul curent al jocului.
-
-        \details
-        Ordinea de desenare este:
-        1. harta de baza,
-        2. inamicii,
-        3. jucatorul,
-        4. foreground-ul hartii,
-        5. barele HP ale inamicilor,
-        6. meniul de pauza,
-        7. overlay-ul de debug,
-        8. HUD-ul jucatorului (scor + bara HP),
-        9. ecranul de moarte (daca e activ),
-        10. dialogul narativ (ultimul — mereu deasupra tuturor).
-
-        HUD-ul si dialogul sunt desenate ultimele pentru a ramane
-        mereu vizibile deasupra hartii si elementelor de foreground.
-    */
     private void Draw() {
-        if (wnd == null || wnd.GetCanvas() == null || !wnd.GetCanvas().isDisplayable()) return;
+        if (wnd == null || wnd.GetCanvas() == null || !wnd.GetCanvas().isDisplayable()) {
+            return;
+        }
 
         bs = wnd.GetCanvas().getBufferStrategy();
         if (bs == null) {
@@ -1071,66 +1061,102 @@ pentru a primi un dialog contextual in dungeon.
         Graphics2D g2d = (Graphics2D) g;
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        /// Scalare din rezolutia logica (800x600) in rezolutia reala a ferestrei.
-        double scaleX = (double) wnd.GetWndWidth()  / LOGICALWIDTH;
+        double scaleX = (double) wnd.GetWndWidth() / LOGICALWIDTH;
         double scaleY = (double) wnd.GetWndHeight() / LOGICALHEIGHT;
         g2d.scale(scaleX, scaleY);
 
-        /// Curatam fundalul cu o culoare inchisa.
         g.setColor(new Color(10, 15, 10));
         g.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
 
-        /// Offset pentru centrare atunci cand harta este mai mica decat viewport-ul logic.
-        int offsetX = 0, offsetY = 0;
+        int offsetX = 0;
+        int offsetY = 0;
+
         if (map != null) {
-            if (map.getPixelWidth()  < LOGICALWIDTH)  offsetX = (LOGICALWIDTH  - map.getPixelWidth())  / 2;
-            if (map.getPixelHeight() < LOGICALHEIGHT) offsetY = (LOGICALHEIGHT - map.getPixelHeight()) / 2;
+            if (map.getPixelWidth() < LOGICALWIDTH) {
+                offsetX = (LOGICALWIDTH - map.getPixelWidth()) / 2;
+            }
+            if (map.getPixelHeight() < LOGICALHEIGHT) {
+                offsetY = (LOGICALHEIGHT - map.getPixelHeight()) / 2;
+            }
         }
 
-        /// 1. Harta de baza.
-        if (map != null && camera != null)
+        if (map != null && camera != null) {
             map.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
 
-        /// 2. Inamicii.
         if (wolf != null && camera != null) wolf.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-        if (skeleton != null && camera != null) skeleton.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-        if (spider != null && camera != null) spider.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        if (wolf2 != null && camera != null) wolf2.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        if (wolf3 != null && camera != null) wolf3.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+
+        if (skeleton != null && camera != null)
+            skeleton.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        if (skeleton2 != null && camera != null)
+            skeleton2.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        if (skeleton3 != null && camera != null)
+            skeleton3.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+
+        if (spider != null && camera != null)
+            spider.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+
+        /*!
+         * \brief Desenam boss-ul explicit in scena.
+         * \details
+         * Malakar nu este NPC, deci trebuie randat separat fata de lista generica npcs.
+         */
+        if (malakar != null && camera != null)
+            malakar.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
 
         if (dungeonWizard != null && camera != null) {
             dungeonWizard.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
 
         if (camera != null) {
-            for (NPC npc : npcs) npc.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            for (NPC npc : npcs) {
+                npc.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            }
         }
 
-        /// 3. Jucatorul.
-        if (player != null && camera != null)
+        if (player != null && camera != null) {
             player.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
 
-        /// 4. Foreground-ul hartii (copaci, acoperisuri etc.) — desenat peste personaje.
-        if (map != null && camera != null)
+        if (map != null && camera != null) {
             map.DrawForeground(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
 
-        /// Efect vizual cinematic (benzi + umbra). Nu se afiseaza peste debug.
         if (GameSettings.cinematicMode && !Game.showHitboxes) {
             drawCinematicOverlay(g2d);
         }
 
-        /// 5. Barele de viata ale inamicilor, desenate peste foreground pentru vizibilitate.
         if (camera != null) {
-            if (wolf     != null) wolf.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-            if (skeleton != null) skeleton.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-            if (spider   != null) spider.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            if (wolf != null) wolf.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            if (wolf2 != null) wolf2.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            if (wolf3 != null) wolf3.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+
+            if (skeleton != null)
+                skeleton.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            if (skeleton2 != null)
+                skeleton2.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            if (skeleton3 != null)
+                skeleton3.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+
+            if (spider != null)
+                spider.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+
+            /*!
+             * \brief Bara mica de HP deasupra boss-ului.
+             */
+            if (malakar != null) {
+                malakar.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            }
         }
 
-        /// 6. Meniul de pauza (overlay negru semitransparent + optiuni).
         if (isPaused) {
             g2d.setColor(new Color(0, 0, 0, 180));
             g2d.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
 
-            String[] options   = {"SETTINGS", "SAVE GAME", "RETURN TO MENU", "EXIT"};
-            Font     pauseFont = new Font("Serif", Font.BOLD, 36);
+            String[] options = {"SETTINGS", "SAVE GAME", "RETURN TO MENU", "EXIT"};
+            Font pauseFont = new Font("Serif", Font.BOLD, 36);
             g2d.setFont(pauseFont);
             FontMetrics fm = g2d.getFontMetrics(pauseFont);
             int startPauseY = 250;
@@ -1150,7 +1176,6 @@ pentru a primi un dialog contextual in dungeon.
             }
         }
 
-        /// 7. Overlay debug: FPS + mesaj "Mod Debug: ON".
         if (showHitboxes) {
             g2d.setColor(Color.YELLOW);
             g2d.setFont(new Font("Consolas", Font.BOLD, 20));
@@ -1161,124 +1186,126 @@ pentru a primi un dialog contextual in dungeon.
             g2d.drawString("Mod Debug: ON", 15, 50);
         }
 
-        /// 8. HUD-ul jucatorului: bara HP + scor curent (desenat ultimul — mereu vizibil).
         if (player != null && !player.isDead()) {
-            int   hudX  = 20;
-            int   hudY  = LOGICALHEIGHT - 30;
-            int   hudW  = 150;
-            int   hudH  = 12;
+            int hudX = 20;
+            int hudY = LOGICALHEIGHT - 30;
+            int hudW = 150;
+            int hudH = 12;
             float ratio = (float) player.getCurrentHp() / player.getMaxHp();
 
-            /// Fundal bara HP.
             g2d.setColor(new Color(20, 20, 20, 200));
             g2d.fillRoundRect(hudX - 2, hudY - 2, hudW + 4, hudH + 4, 6, 6);
 
-            /// Fundal rosu inchis (hp pierdut).
             g2d.setColor(new Color(100, 10, 10, 220));
             g2d.fillRoundRect(hudX, hudY, hudW, hudH, 4, 4);
 
-            /// Bara HP colorata: verde > 60%, galben > 30%, rosu <= 30%.
             Color hudColor = ratio > 0.6f
-                ? new Color(50,  200, 50)
-                : ratio > 0.3f
-                    ? new Color(220, 190, 20)
-                    : new Color(210, 40,  40);
+                    ? new Color(50, 200, 50)
+                    : ratio > 0.3f
+                      ? new Color(220, 190, 20)
+                      : new Color(210, 40, 40);
 
             g2d.setColor(hudColor);
             g2d.fillRoundRect(hudX, hudY, (int) (hudW * ratio), hudH, 4, 4);
 
-            /// Text HP: "HP: X / Y" la dreapta barei.
             g2d.setColor(Color.WHITE);
             g2d.setFont(new Font("Consolas", Font.BOLD, 11));
-            g2d.drawString("HP: " + player.getCurrentHp() + " / " + player.getMaxHp(),
-                hudX + hudW + 8, hudY + 10);
+            g2d.drawString(
+                    "HP: " + player.getCurrentHp() + " / " + player.getMaxHp(),
+                    hudX + hudW + 8,
+                    hudY + 10
+            );
         }
 
-        /*!
-         * Hint de interactiune pentru magician.
-         * Este afisat doar cand jucatorul este suficient de aproape.
-         */
         if (dungeonWizard != null && dungeonWizard.canInteract() && !dialogBox.isActive() && !isPaused && !isDeathScreen) {
             g2d.setFont(new Font("Serif", Font.BOLD, 16));
             g2d.setColor(new Color(255, 230, 170));
             g2d.drawString("[ ENTER ] Talk", 315, 520);
         }
 
-        /// Scorul curent in coltul dreapta-sus al ecranului.
         g2d.setColor(Color.WHITE);
         g2d.setFont(new Font("Consolas", Font.BOLD, 14));
         g2d.drawString("SCORE: " + score, LOGICALWIDTH - 155, 25);
 
-        /// 9. Ecranul de moarte (YOU DIED) + scorul final al sesiunii terminate.
+        /*!
+         * \brief Bara mare speciala de boss.
+         * \details
+         * O afisam doar in nivelul 4 si doar cat timp Malakar este viu.
+         */
+        if (malakar != null && !malakar.isDead() && currentLevel == 4) {
+            malakar.drawBossBar(g2d, LOGICALWIDTH);
+        }
+
         if (isDeathScreen) {
             drawDeathScreen(g2d);
 
             Font scoreFont = new Font("Serif", Font.BOLD, 28);
             g2d.setFont(scoreFont);
             g2d.setColor(new Color(180, 180, 190));
+
             String scoreText = "SCOR FINAL: " + score;
             FontMetrics sm = g2d.getFontMetrics(scoreFont);
             g2d.drawString(scoreText, (LOGICALWIDTH - sm.stringWidth(scoreText)) / 2, 285);
         }
 
-        /// 10. Dialogul narativ — desenat ultimul, mereu deasupra tuturor elementelor.
         dialogBox.draw(g2d, LOGICALWIDTH, LOGICALHEIGHT);
 
-        if (runState && wnd.GetCanvas().isDisplayable()) bs.show();
+        if (runState && wnd.GetCanvas().isDisplayable()) {
+            bs.show();
+        }
+
         g.dispose();
     }
 
-    /*! \fn private void drawDeathScreen(Graphics2D g2d)
-        \brief Deseneaza ecranul negru de moarte cu optiunile TRY AGAIN / EXIT GAME.
-
-        \param g2d Contextul grafic 2D curent.
-    */
     private void drawDeathScreen(Graphics2D g2d) {
-        /// Fundal negru complet.
         g2d.setColor(Color.BLACK);
         g2d.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
 
-        /// Titlul "YOU DIED" cu drop shadow rosu.
-        String title     = "YOU DIED";
-        Font   titleFont = new Font("Serif", Font.BOLD, 72);
+        String title = "YOU DIED";
+        Font titleFont = new Font("Serif", Font.BOLD, 72);
         g2d.setFont(titleFont);
+
         FontMetrics titleMetrics = g2d.getFontMetrics(titleFont);
         int titleX = (LOGICALWIDTH - titleMetrics.stringWidth(title)) / 2;
         int titleY = 210;
 
         g2d.setColor(new Color(120, 0, 0));
         g2d.drawString(title, titleX + 3, titleY + 3);
+
         g2d.setColor(new Color(210, 35, 35));
         g2d.drawString(title, titleX, titleY);
 
         int startY = 330;
 
-        /// Subtitlul optional (ex. "BAD ENTRANCE") in auriu sub titlu.
         if (deathSubtitle != null && !deathSubtitle.isEmpty()) {
-            Font        subFont    = new Font("Serif", Font.BOLD, 34);
+            Font subFont = new Font("Serif", Font.BOLD, 34);
             g2d.setFont(subFont);
+
             FontMetrics subMetrics = g2d.getFontMetrics(subFont);
             int subX = (LOGICALWIDTH - subMetrics.stringWidth(deathSubtitle)) / 2;
             int subY = titleY + 52;
+
             g2d.setColor(new Color(218, 165, 32));
             g2d.drawString(deathSubtitle, subX, subY);
+
             startY = 370;
         }
 
-        /// Optiunile meniului de moarte: TRY AGAIN / EXIT GAME.
-        String[] options    = {"TRY AGAIN", "EXIT GAME"};
-        Font     optionFont = new Font("Serif", Font.BOLD, 34);
+        String[] options = {"TRY AGAIN", "EXIT GAME"};
+        Font optionFont = new Font("Serif", Font.BOLD, 34);
         g2d.setFont(optionFont);
         FontMetrics optionMetrics = g2d.getFontMetrics(optionFont);
 
         for (int i = 0; i < options.length; i++) {
             String text = options[i];
+
             if (i == deathMenuSelection) {
                 text = "> " + text + " <";
                 g2d.setColor(new Color(218, 165, 32));
             } else {
                 g2d.setColor(new Color(170, 170, 180));
             }
+
             int x = (LOGICALWIDTH - optionMetrics.stringWidth(text)) / 2;
             int y = startY + i * 66;
             g2d.drawString(text, x, y);
@@ -1289,94 +1316,115 @@ pentru a primi un dialog contextual in dungeon.
     //  NIVELURI
     // =========================================================================
 
-    /*! \fn private void setPlayerSpawn(int tileCol, int tileRow)
-        \brief Pozitioneaza jucatorul pe harta pe baza coordonatelor de tile.
-
-        \param tileCol Coloana tile-ului de spawn.
-        \param tileRow Linia tile-ului de spawn.
-    */
+    /**
+     * Pozitioneaza jucatorul pe harta in centrul unui tile.
+     *
+     * @param tileCol coloana tile-ului de spawn
+     * @param tileRow linia tile-ului de spawn
+     */
     private void setPlayerSpawn(int tileCol, int tileRow) {
-        if (player == null) return;
-        float spawnX = tileCol * Tile.TILE_WIDTH  + Tile.TILE_WIDTH  / 2.0f - player.GetWidth()  / 2.0f;
-        float spawnY = tileRow * Tile.TILE_HEIGHT + Tile.TILE_HEIGHT / 2.0f - player.GetHeight() / 2.0f;
+        // Daca jucatorul nu exista inca, nu avem ce pozitiona.
+        if (player == null) {
+            return;
+        }
+
+        // Calculam coordonatele astfel incat sprite-ul jucatorului sa fie centrat pe tile-ul dorit.
+        float spawnX = tileCol * Tile.TILE_WIDTH+ Tile.TILE_WIDTH/ 2.0f - player.GetWidth() / 2.0f;
+        float spawnY = tileRow * Tile.TILE_HEIGHT+ Tile.TILE_HEIGHT/ 2.0f - player.GetHeight() / 2.0f;
+
+        // Aplicam pozitia noua a jucatorului.
         player.setPosition(spawnX, spawnY);
-        if (camera != null && map != null) camera.CenterOnPlayer(player, map);
-        if (keyManager != null) keyManager.Clear();
+
+        // Daca avem camera si harta, recenter camera pe jucator dupa spawn.
+        if (camera != null && map != null) {
+            camera.CenterOnPlayer(player, map);
+        }
+
+        // Curatam inputul pentru a evita miscari sau tranzitii accidentale imediat dupa spawn.
+        if (keyManager != null) {
+            keyManager.Clear();
+        }
     }
 
-    /*! \fn private void loadLevel(int level)
-        \brief Incarca nivelul specificat si fisierele sale vizuale/logice.
-
-        \details
-        Reinitializeaza toti inamicii si NPC-urile pentru nivelul nou.
-        Porneste muzica potrivita prin updateLevelMusic().
-        Afiseaza dialogul narativ de introducere al nivelului (o singura data per sesiune).
-        Scorul NU este resetat aici — resetul se face exclusiv in
-        executeDeathMenuAction() la TRY AGAIN.
-
-        \param level Nivelul care trebuie incarcat (1-4).
-    */
+    /**
+     * Incarca nivelul cerut si reinitializeaza entitatile specifice acelui nivel.
+     * Scorul NU este resetat aici.
+     *
+     * @param level nivelul care trebuie incarcat
+     */
+    /**
+     * Incarca nivelul cerut si reinitializeaza entitatile specifice acelui nivel.
+     * Scorul NU este resetat aici.
+     *
+     * @param level nivelul care trebuie incarcat
+     */
     private void loadLevel(int level) {
+        // Retinem nivelul curent.
         currentLevel = level;
-        wolf         = null;
-        skeleton     = null;
-        spider       = null;
+
+        // Resetam toti inamicii si boss-ul pentru a reincarca starea nivelului de la zero.
+        wolf = null;
+        wolf2 = null;
+        wolf3 = null;
+
+        skeleton = null;
+        skeleton2 = null;
+        skeleton3 = null;
+
+        spider = null;
+        malakar = null;
+
+        // Golim lista de NPC-uri a nivelului precedent.
         npcs.clear();
-        /// Resetam si NPC-ul special din dungeon la reincarcarea nivelului.
+
+        // Resetam si NPC-ul special din dungeon.
         dungeonWizard = null;
 
-        if (player == null) player = new Player(0, 0);
+        // Daca player-ul nu exista inca, il cream.
+        if (player == null) {
+            player = new Player(0, 0);
+        }
 
+        // =========================
+        // NIVELUL 1 - FOREST
+        // =========================
         if (level == 1) {
-            map = new Map(
-                "res/maps/level1_base.png",
-                "res/maps/level1_foreground.png",
-                "res/maps/harta_primul_nivel.tmx"
-            );
+            map = new Map("res/maps/level1_base.png",
+                    "res/maps/level1_foreground.png",
+                    "res/maps/harta_primul_nivel.tmx");
+
+            // Pozitia initiala a jucatorului in nivelul 1.
             setPlayerSpawn(10, 14);
+
+            // Inamicii de pe nivelul 1.
             wolf = EnemyFactory.createWolf(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
-            /// Garzi la poarta satului in nivelul 1.
-            npcs.add(new NPC(11 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD,   "/textures/npc_village_gate_guard_spear_small.png"));
-            npcs.add(new NPC(15 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD,   "/textures/npc_village_gate_guard_shield_small.png"));
 
-        } else if (level == 2) {
-            map = new Map(
-                    "res/maps/level2_base.png",
+            // Garzile de la poarta satului.
+            npcs.add(new NPC(11 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player,
+                    NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_spear_small.png"));
+            npcs.add(new NPC(15 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player,
+                    NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_shield_small.png"));
+        }
+
+        // =========================
+        // NIVELUL 2 - DUNGEON
+        // =========================
+        else if (level == 2) {
+            map = new Map("res/maps/level2_base.png",
                     "res/maps/level2_foreground.png",
-                    "res/maps/harta_nivel2_dungeon.tmx"
-            );
+                    "res/maps/harta_nivel2_dungeon.tmx");
 
+            // Pozitia initiala a jucatorului in dungeon.
             setPlayerSpawn(19, 24);
 
-            skeleton = EnemyFactory.createSkeleton(
-                    11 * Tile.TILE_WIDTH,
-                    13 * Tile.TILE_HEIGHT,
-                    player
-            );
+            // Inamicii specifici dungeon-ului.
+            skeleton = EnemyFactory.createSkeleton(11 * Tile.TILE_WIDTH, 13 * Tile.TILE_HEIGHT, player);
+            spider = EnemyFactory.createSpider(29 * Tile.TILE_WIDTH, 19 * Tile.TILE_HEIGHT, player);
 
-            spider = EnemyFactory.createSpider(
-                    29 * Tile.TILE_WIDTH,
-                    19 * Tile.TILE_HEIGHT,
-                    player
-            );
-
-            /*!
-             * Magician NPC in nivelul 2.
-             *
-             * IMPORTANT:
-             * Pune fisierul Idle_CrazyMagician.png in:
-             * res/textures/Idle_CrazyMagician.png
-             *
-             * Pozitie noua:
-             * - 7 tile-uri mai la stanga fata de pozitia initiala
-             * - 1 tile mai jos fata de pozitia initiala
-             *
-             * Initial: (20, 16)
-             * Nou:     (13, 17)
-             */
+            // NPC-ul special animat din nivelul 2.
             dungeonWizard = new WizardNPC(
-                    13 * Tile.TILE_WIDTH,
-                    17 * Tile.TILE_HEIGHT,
+                    20 * Tile.TILE_WIDTH,
+                    16 * Tile.TILE_HEIGHT,
                     player,
                     "/textures/Idle_CrazyMagician.png",
                     "The Mad Magician",
@@ -1384,99 +1432,142 @@ pentru a primi un dialog contextual in dungeon.
                     "The dead guard the corridors, but they do not guard the truth.",
                     "Beyond this chamber lies a path sealed by fear and memory.",
                     "Go forward only if your blade and will are both unbroken.",
-                    "[ SPACE ] Continue"
+                    "SPACE Continue"
             );
-
-        } else if (level == 3) {
-            map = new Map(
-                "res/maps/level3_village_base.png",
-                "res/maps/level3_village_foreground.png",
-                "res/maps/harta_nivel3_village.tmx"
-            );
-            setPlayerSpawn(24, 31);
-            /// Garzi la poarta castelului.
-            npcs.add(new NPC(20 * Tile.TILE_WIDTH,  7 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD,    "/textures/npc_village_gate_guard_spear_small.png"));
-            npcs.add(new NPC(28 * Tile.TILE_WIDTH,  7 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD,    "/textures/npc_village_gate_guard_shield_small.png"));
-            /// Sateni prin sat.
-            npcs.add(new NPC(17 * Tile.TILE_WIDTH, 24 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_blacksmith_small.png"));
-            npcs.add(new NPC(33 * Tile.TILE_WIDTH, 25 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_peasant_woman_small.png"));
-            npcs.add(new NPC(12 * Tile.TILE_WIDTH, 18 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_elder_lantern_small.png"));
-            npcs.add(new NPC(28 * Tile.TILE_WIDTH, 20 * Tile.TILE_HEIGHT, player, NPC.NPCType.VILLAGER, "/textures/npc_village_merchant_traveler_small.png"));
-
-        } else if (level == 4) {
-            map = new Map(
-                "res/maps/level3_base.png",
-                "res/maps/level3_foreground.png",
-                "res/maps/harta_nivel3_the_great_hall.tmx"
-            );
-            setPlayerSpawn(9, 13);
-            /// Patru garzi regale in Great Hall.
-            npcs.add(new NPC( 6 * Tile.TILE_WIDTH, 10 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
-            npcs.add(new NPC(13 * Tile.TILE_WIDTH, 10 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
-            npcs.add(new NPC( 7 * Tile.TILE_WIDTH, 12 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
-            npcs.add(new NPC(12 * Tile.TILE_WIDTH, 12 * Tile.TILE_HEIGHT, player, NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
         }
 
+        // =========================
+        // NIVELUL 3 - VILLAGE
+        // =========================
+        else if (level == 3) {
+            map = new Map("res/maps/level3_village_base.png",
+                    "res/maps/level3_village_foreground.png",
+                    "res/maps/harta_nivel3_village.tmx");
+
+            // Pozitia initiala a jucatorului in sat.
+            setPlayerSpawn(24, 31);
+
+            // Garzi la poarta castelului.
+            npcs.add(new NPC(20 * Tile.TILE_WIDTH, 7 * Tile.TILE_HEIGHT, player,
+                    NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_spear_small.png"));
+            npcs.add(new NPC(28 * Tile.TILE_WIDTH, 7 * Tile.TILE_HEIGHT, player,
+                    NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_shield_small.png"));
+
+            // Sateni raspanditi prin sat.
+            npcs.add(new NPC(17 * Tile.TILE_WIDTH, 24 * Tile.TILE_HEIGHT, player,
+                    NPC.NPCType.VILLAGER, "/textures/npc_village_blacksmith_small.png"));
+            npcs.add(new NPC(33 * Tile.TILE_WIDTH, 25 * Tile.TILE_HEIGHT, player,
+                    NPC.NPCType.VILLAGER, "/textures/npc_village_peasant_woman_small.png"));
+            npcs.add(new NPC(12 * Tile.TILE_WIDTH, 18 * Tile.TILE_HEIGHT, player,
+                    NPC.NPCType.VILLAGER, "/textures/npc_village_elder_lantern_small.png"));
+            npcs.add(new NPC(28 * Tile.TILE_WIDTH, 20 * Tile.TILE_HEIGHT, player,
+                    NPC.NPCType.VILLAGER, "/textures/npc_village_merchant_traveler_small.png"));
+        }
+
+        // =========================
+        // NIVELUL 4 - GREAT HALL
+        // =========================
+        else if (level == 4) {
+            map = new Map("res/maps/level3_base.png",
+                    "res/maps/level3_foreground.png",
+                    "res/maps/harta_nivel3_the_great_hall.tmx");
+
+            // Pozitia initiala a jucatorului in Great Hall.
+            setPlayerSpawn(9, 13);
+
+            // Cele patru garzi regale ostile din sala mare.
+            npcs.add(new NPC(6 * Tile.TILE_WIDTH, 10 * Tile.TILE_HEIGHT, player,
+                    NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
+            npcs.add(new NPC(13 * Tile.TILE_WIDTH, 10 * Tile.TILE_HEIGHT, player,
+                    NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
+            npcs.add(new NPC(7 * Tile.TILE_WIDTH, 12 * Tile.TILE_HEIGHT, player,
+                    NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
+            npcs.add(new NPC(12 * Tile.TILE_WIDTH, 12 * Tile.TILE_HEIGHT, player,
+                    NPC.NPCType.ROYAL_GUARD, "/textures/npc_great_hall_royal_guard_small.png"));
+
+            /*!
+             * \brief Spawn explicit pentru boss-ul final Malakar.
+             * \details
+             * Boss-ul nu face parte din lista generica de NPC-uri, deci trebuie
+             * creat separat aici. Restul logicii (Update, Draw, combat, boss bar,
+             * save/load) exista deja in Game.java si va functiona automat dupa
+             * aceasta initializare.
+             *
+             * Coordonatele pot fi ajustate ulterior daca vrei o pozitionare mai
+             * dramatica in sala, dar acest spawn il face sa apara imediat pe nivel.
+             */
+            malakar = new Malakar(2 * Tile.TILE_WIDTH, 8 * Tile.TILE_HEIGHT, player);
+        }
+
+        // Punem un mic cooldown pentru a evita tranzitii multiple instant dupa incarcare.
         transitionCooldown = 30;
 
-        /*
-         * Dupa incarcarea nivelului, pornim muzica potrivita.
-         * Forest -> Dungeon -> Village -> Great Hall: soundtrack-ul se schimba automat.
-         */
+        // Pornim muzica potrivita pentru nivelul nou incarcat.
         updateLevelMusic();
 
-        /*
-         * Afisam dialogul narativ de introducere al nivelului.
-         * showLevelDialog() verifica intern daca dialogul a mai fost afisat
-         * in aceasta sesiune si il ignora daca da.
-         */
+        // Afisam dialogul de introducere al nivelului, daca nu a fost deja afisat in sesiunea curenta.
         showLevelDialog(level);
     }
 
-    /*! \fn private boolean isBadEntranceAttempt()
-        \brief Detecteaza tentativele de intrare ilegala in zona restricionata de pe nivelul 1.
-
-        \return true daca jucatorul incearca sa treaca prin zona interzisa.
-    */
+    /**
+     * Detecteaza daca jucatorul incearca sa intre prin zona interzisa
+     * din partea de sus a nivelului 1.
+     *
+     * @return true daca jucatorul face o tentativa de intrare ilegala
+     */
     private boolean isBadEntranceAttempt() {
-        if (currentLevel != 1 || player == null) return false;
+        // Verificarea este relevanta doar in nivelul 1 si doar daca player-ul exista.
+        if (currentLevel != 1 || player == null) {
+            return false;
+        }
+
+        // Determinam tile-ul pe care se afla picioarele jucatorului.
         int tileCol = (int) (player.GetFeetCenterX() / Tile.TILE_WIDTH);
         int tileRow = (int) (player.GetFeetBottomY() / Tile.TILE_HEIGHT);
+
+        // Zona interzisa este in partea superioara a hartii, intre coloanele 11 si 15 inclusiv.
         return tileRow <= 3 && tileCol >= 11 && tileCol <= 15;
     }
 
-    /*! \fn private void checkLevelTransition()
-        \brief Verifica daca jucatorul a ajuns intr-o zona de tranzitie si incarca nivelul urmator.
-
-        \details
-        La fiecare tranzitie, progresul este salvat automat (fara mesaj de confirmare).
-        Zona de tranzitie este definita prin tile-uri speciale in fisierul TMX al hartii.
-        Scorul este pastrat intre niveluri — nu se reseteaza la tranzitie.
-    */
+    /**
+     * Verifica daca jucatorul a ajuns intr-o zona de tranzitie si,
+     * daca da, incarca nivelul urmator si salveaza progresul.
+     */
     private void checkLevelTransition() {
-        if (transitionCooldown > 0 || player == null || map == null) return;
+        // Nu facem tranzitie daca exista cooldown, player-ul lipseste sau harta nu e incarcata.
+        if (transitionCooldown > 0 || player == null || map == null) {
+            return;
+        }
 
+        // Folosim coordonatele picioarelor jucatorului pentru detectia tranzitiei.
         int px = (int) player.GetFeetCenterX();
         int py = (int) player.GetFeetBottomY();
 
+        // Tranzitia din nivelul 1 in nivelul 2.
         if (currentLevel == 1) {
-            if (map.isTransitionAtPixel(px, py) ||
-                map.isTransitionAtPixel(px - 8, py) ||
-                map.isTransitionAtPixel(px + 8, py)) {
+            if (map.isTransitionAtPixel(px, py)
+                    || map.isTransitionAtPixel(px - 8, py)
+                    || map.isTransitionAtPixel(px + 8, py)) {
                 loadLevel(2);
                 saveCurrentGame(false);
             }
-        } else if (currentLevel == 2) {
-            if (map.isTransitionAtPixel(px, py) ||
-                map.isTransitionAtPixel(px - 8, py) ||
-                map.isTransitionAtPixel(px + 8, py)) {
+        }
+
+        // Tranzitia din nivelul 2 in nivelul 3.
+        else if (currentLevel == 2) {
+            if (map.isTransitionAtPixel(px, py)
+                    || map.isTransitionAtPixel(px - 8, py)
+                    || map.isTransitionAtPixel(px + 8, py)) {
                 loadLevel(3);
                 saveCurrentGame(false);
             }
-        } else if (currentLevel == 3) {
-            if (map.isTransitionAtPixel(px, py) ||
-                map.isTransitionAtPixel(px - 8, py) ||
-                map.isTransitionAtPixel(px + 8, py)) {
+        }
+
+        // Tranzitia din nivelul 3 in nivelul 4.
+        else if (currentLevel == 3) {
+            if (map.isTransitionAtPixel(px, py)
+                    || map.isTransitionAtPixel(px - 8, py)
+                    || map.isTransitionAtPixel(px + 8, py)) {
                 loadLevel(4);
                 saveCurrentGame(false);
             }

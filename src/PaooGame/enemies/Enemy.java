@@ -43,7 +43,7 @@ public class Enemy extends Entity {
 
     private static final int ENEMY_MAX_HP = 60;
     /// Damage aplicat jucatorului la fiecare contact fizic confirmat prin hitbox.
-    public  static final int ATTACK_DAMAGE = 10;
+    public  static final int ATTACK_DAMAGE = 5;
 
     /*! \fn public Enemy(float x, float y, Player targetPlayer)
         \brief Constructor — initializeaza HP, viteza si animatiile lupului.

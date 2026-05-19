@@ -60,6 +60,13 @@ public class Game implements Runnable {
     /// Al doilea inamic specific nivelului 2 (paianjen).
     private Spider spider;
 
+    /*! \brief NPC-ul magician din nivelul 2.
+\details
+Este un NPC pasiv, animat, cu care jucatorul poate interactiona
+pentru a primi un dialog contextual in dungeon.
+*/
+    private WizardNPC dungeonWizard;
+
     /// Lista de NPC-uri din nivelul curent (garzi, sateni, garzi regale).
     private java.util.List<NPC> npcs = new java.util.ArrayList<>();
 
@@ -522,8 +529,28 @@ public class Game implements Runnable {
         if (wolf     != null && map != null) wolf.Update(map);
         if (skeleton != null && map != null) skeleton.Update(map);
         if (spider   != null && map != null) spider.Update(map);
-        if (map != null) {
-            for (NPC npc : npcs) npc.Update(map);
+
+        /*!
+         * Interactiunea cu magicianul din nivelul 2.
+         *
+         * Folosim ENTER pentru deschiderea dialogului, deoarece SPACE este deja
+         * rezervat pentru inchiderea dialogurilor active.
+         *
+         * Detectia este de tip edge-triggered: dialogul se deschide doar la
+         * apasarea initiala a tastei, nu la mentinerea ei apasata.
+         */
+        if (dungeonWizard != null && keyManager.enter && !lastEnterState && dungeonWizard.canInteract()) {
+            dialogBox.show(
+                    "The Mad Magician",
+                    "So... another knight dares to walk these ruins.",
+                    "The dead guard the corridors, but they do not guard the truth.",
+                    "Beyond this chamber lies a path sealed by fear and memory.",
+                    "Go forward only if your blade and will are both unbroken.",
+                    "[ SPACE ] Continue"
+            );
+
+            lastEnterState = keyManager.enter;
+            return;
         }
 
         /// Camera urmareste jucatorul activ.
@@ -1065,9 +1092,14 @@ public class Game implements Runnable {
             map.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
 
         /// 2. Inamicii.
-        if (wolf     != null && camera != null) wolf.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        if (wolf != null && camera != null) wolf.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         if (skeleton != null && camera != null) skeleton.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
-        if (spider   != null && camera != null) spider.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        if (spider != null && camera != null) spider.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+
+        if (dungeonWizard != null && camera != null) {
+            dungeonWizard.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        }
+
         if (camera != null) {
             for (NPC npc : npcs) npc.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
@@ -1160,6 +1192,16 @@ public class Game implements Runnable {
             g2d.setFont(new Font("Consolas", Font.BOLD, 11));
             g2d.drawString("HP: " + player.getCurrentHp() + " / " + player.getMaxHp(),
                 hudX + hudW + 8, hudY + 10);
+        }
+
+        /*!
+         * Hint de interactiune pentru magician.
+         * Este afisat doar cand jucatorul este suficient de aproape.
+         */
+        if (dungeonWizard != null && dungeonWizard.canInteract() && !dialogBox.isActive() && !isPaused && !isDeathScreen) {
+            g2d.setFont(new Font("Serif", Font.BOLD, 16));
+            g2d.setColor(new Color(255, 230, 170));
+            g2d.drawString("[ ENTER ] Talk", 315, 520);
         }
 
         /// Scorul curent in coltul dreapta-sus al ecranului.
@@ -1280,6 +1322,8 @@ public class Game implements Runnable {
         skeleton     = null;
         spider       = null;
         npcs.clear();
+        /// Resetam si NPC-ul special din dungeon la reincarcarea nivelului.
+        dungeonWizard = null;
 
         if (player == null) player = new Player(0, 0);
 
@@ -1297,13 +1341,51 @@ public class Game implements Runnable {
 
         } else if (level == 2) {
             map = new Map(
-                "res/maps/level2_base.png",
-                "res/maps/level2_foreground.png",
-                "res/maps/harta_nivel2_dungeon.tmx"
+                    "res/maps/level2_base.png",
+                    "res/maps/level2_foreground.png",
+                    "res/maps/harta_nivel2_dungeon.tmx"
             );
+
             setPlayerSpawn(19, 24);
-            skeleton = EnemyFactory.createSkeleton(11 * Tile.TILE_WIDTH, 13 * Tile.TILE_HEIGHT, player);
-            spider   = EnemyFactory.createSpider  (29 * Tile.TILE_WIDTH, 19 * Tile.TILE_HEIGHT, player);
+
+            skeleton = EnemyFactory.createSkeleton(
+                    11 * Tile.TILE_WIDTH,
+                    13 * Tile.TILE_HEIGHT,
+                    player
+            );
+
+            spider = EnemyFactory.createSpider(
+                    29 * Tile.TILE_WIDTH,
+                    19 * Tile.TILE_HEIGHT,
+                    player
+            );
+
+            /*!
+             * Magician NPC in nivelul 2.
+             *
+             * IMPORTANT:
+             * Pune fisierul Idle_CrazyMagician.png in:
+             * res/textures/Idle_CrazyMagician.png
+             *
+             * Pozitie noua:
+             * - 7 tile-uri mai la stanga fata de pozitia initiala
+             * - 1 tile mai jos fata de pozitia initiala
+             *
+             * Initial: (20, 16)
+             * Nou:     (13, 17)
+             */
+            dungeonWizard = new WizardNPC(
+                    13 * Tile.TILE_WIDTH,
+                    17 * Tile.TILE_HEIGHT,
+                    player,
+                    "/textures/Idle_CrazyMagician.png",
+                    "The Mad Magician",
+                    "So... another knight dares to walk these ruins.",
+                    "The dead guard the corridors, but they do not guard the truth.",
+                    "Beyond this chamber lies a path sealed by fear and memory.",
+                    "Go forward only if your blade and will are both unbroken.",
+                    "[ SPACE ] Continue"
+            );
 
         } else if (level == 3) {
             map = new Map(

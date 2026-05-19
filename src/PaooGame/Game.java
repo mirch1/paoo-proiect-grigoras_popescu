@@ -53,10 +53,12 @@ public class Game implements Runnable {
 
     /// Inamic specific nivelului 1 (lup).
     private Enemy wolf;
-
+    private Enemy wolf2;
+    private Enemy wolf3;
     /// Inamic specific nivelului 2 (schelet).
     private Skeleton skeleton;
-
+    private Skeleton skeleton2;
+    private Skeleton skeleton3;
     /// Al doilea inamic specific nivelului 2 (paianjen).
     private Spider spider;
 
@@ -412,9 +414,13 @@ pentru a primi un dialog contextual in dungeon.
         \return true daca trebuie pornita muzica de lupta.
     */
     private boolean shouldPlayBattleMusic() {
-        if (isEnemyCloseForBattle(wolf,     220) ||
-            isEnemyCloseForBattle(skeleton, 220) ||
-            isEnemyCloseForBattle(spider,   220)) {
+        if (isEnemyCloseForBattle(wolf,      220) ||
+                isEnemyCloseForBattle(wolf2,     220) ||
+                isEnemyCloseForBattle(wolf3,     220) ||
+                isEnemyCloseForBattle(skeleton,  220) ||
+                isEnemyCloseForBattle(skeleton2, 220) ||
+                isEnemyCloseForBattle(skeleton3, 220) ||
+                isEnemyCloseForBattle(spider,    220)) {
             return true;
         }
 
@@ -526,9 +532,16 @@ pentru a primi un dialog contextual in dungeon.
 
         /// Actualizare entitati.
         if (player != null && map != null) player.Update(keyManager, map);
+
         if (wolf     != null && map != null) wolf.Update(map);
+        if (wolf2    != null && map != null) wolf2.Update(map);
+        if (wolf3    != null && map != null) wolf3.Update(map);
+
         if (skeleton != null && map != null) skeleton.Update(map);
+        if (skeleton2 != null && map != null) skeleton2.Update(map);
+        if (skeleton3 != null && map != null) skeleton3.Update(map);
         if (spider   != null && map != null) spider.Update(map);
+
 
         /*!
          * Interactiunea cu magicianul din nivelul 2.
@@ -666,8 +679,18 @@ pentru a primi un dialog contextual in dungeon.
         if (playerAtk != null) {
             if (wolf     != null && !wolf.isDead()     && playerAtk.intersects(wolf.getFeetRect()))
                 wolf.takeDamage(playerAttackDamage);
+            if (wolf2 != null && !wolf2.isDead() && playerAtk.intersects(wolf2.getFeetRect()))
+                wolf2.takeDamage(playerAttackDamage);
+            if (wolf3 != null && !wolf3.isDead() && playerAtk.intersects(wolf3.getFeetRect()))
+                wolf3.takeDamage(playerAttackDamage);
+
             if (skeleton != null && !skeleton.isDead() && playerAtk.intersects(skeleton.getFeetRect()))
                 skeleton.takeDamage(playerAttackDamage);
+            if (skeleton2 != null && !skeleton2.isDead() && playerAtk.intersects(skeleton2.getFeetRect()))
+                skeleton2.takeDamage(playerAttackDamage);
+            if (skeleton3 != null && !skeleton3.isDead() && playerAtk.intersects(skeleton3.getFeetRect()))
+                skeleton3.takeDamage(playerAttackDamage);
+
             if (spider   != null && !spider.isDead()   && playerAtk.intersects(spider.getFeetRect()))
                 spider.takeDamage(playerAttackDamage);
             for (NPC npc : npcs) {
@@ -679,7 +702,16 @@ pentru a primi un dialog contextual in dungeon.
         /// Inamicii lovesc jucatorul prin contact direct (coliziune picioare).
         if (wolf     != null && !wolf.isDead()     && playerFeet.intersects(wolf.getFeetRect()))
             player.takeDamage(wolfAttackDamage);
+        if (wolf2 != null && !wolf2.isDead() && playerFeet.intersects(wolf2.getFeetRect()))
+            player.takeDamage(wolfAttackDamage);
+        if (wolf3 != null && !wolf3.isDead() && playerFeet.intersects(wolf3.getFeetRect()))
+            player.takeDamage(wolfAttackDamage);
+
         if (skeleton != null && !skeleton.isDead() && playerFeet.intersects(skeleton.getFeetRect()))
+            player.takeDamage(skeletonAttackDamage);
+        if (skeleton2 != null && !skeleton2.isDead() && playerFeet.intersects(skeleton2.getFeetRect()))
+            player.takeDamage(skeletonAttackDamage);
+        if (skeleton3 != null && !skeleton3.isDead() && playerFeet.intersects(skeleton3.getFeetRect()))
             player.takeDamage(skeletonAttackDamage);
 
         /// Paianjenul loveste prin proiectil (panza).
@@ -704,10 +736,28 @@ pentru a primi un dialog contextual in dungeon.
             addScore(GameSettings.SCORE_WOLF_KILLED);
             wolf.setScoreAwarded(true);
         }
+        if (wolf2 != null && wolf2.isDead() && !wolf2.isScoreAwarded()) {
+            addScore(GameSettings.SCORE_WOLF_KILLED);
+            wolf2.setScoreAwarded(true);
+        }
+        if (wolf3 != null && wolf3.isDead() && !wolf3.isScoreAwarded()) {
+            addScore(GameSettings.SCORE_WOLF_KILLED);
+            wolf3.setScoreAwarded(true);
+        }
         if (skeleton != null && skeleton.isDead() && !skeleton.isScoreAwarded()) {
             addScore(GameSettings.SCORE_SKELETON_KILLED);
             skeleton.setScoreAwarded(true);
         }
+
+        if (skeleton2 != null && skeleton2.isDead() && !skeleton2.isScoreAwarded()) {
+            addScore(GameSettings.SCORE_SKELETON_KILLED);
+            skeleton2.setScoreAwarded(true);
+        }
+        if (skeleton3 != null && skeleton3.isDead() && !skeleton3.isScoreAwarded()) {
+            addScore(GameSettings.SCORE_SKELETON_KILLED);
+            skeleton3.setScoreAwarded(true);
+        }
+
         if (spider   != null && spider.isDead()   && !spider.isScoreAwarded()) {
             addScore(GameSettings.SCORE_SPIDER_KILLED);
             spider.setScoreAwarded(true);
@@ -895,7 +945,12 @@ pentru a primi un dialog contextual in dungeon.
         StringBuilder defeated = new StringBuilder();
 
         if (wolf     != null && wolf.isDead())     appendDefeatedId(defeated, "wolf");
+        if (wolf2 != null && wolf2.isDead()) appendDefeatedId(defeated, "wolf2");
+        if (wolf3 != null && wolf3.isDead()) appendDefeatedId(defeated, "wolf3");
+
         if (skeleton != null && skeleton.isDead()) appendDefeatedId(defeated, "skeleton");
+        if (skeleton2 != null && skeleton2.isDead()) appendDefeatedId(defeated, "skeleton2");
+        if (skeleton3 != null && skeleton3.isDead()) appendDefeatedId(defeated, "skeleton3");
         if (spider   != null && spider.isDead())   appendDefeatedId(defeated, "spider");
 
         /*
@@ -924,7 +979,12 @@ pentru a primi un dialog contextual in dungeon.
         if (state == null) return;
 
         if (wolf     != null && state.isEnemyDefeated("wolf"))     wolf.forceDead();
+        if (wolf2 != null && state.isEnemyDefeated("wolf2")) wolf2.forceDead();
+        if (wolf3 != null && state.isEnemyDefeated("wolf3")) wolf3.forceDead();
+
         if (skeleton != null && state.isEnemyDefeated("skeleton")) skeleton.forceDead();
+        if (skeleton2 != null && state.isEnemyDefeated("skeleton2")) skeleton2.forceDead();
+        if (skeleton3 != null && state.isEnemyDefeated("skeleton3")) skeleton3.forceDead();
         if (spider   != null && state.isEnemyDefeated("spider"))   spider.forceDead();
 
         for (int i = 0; i < npcs.size(); i++) {
@@ -1093,7 +1153,11 @@ pentru a primi un dialog contextual in dungeon.
 
         /// 2. Inamicii.
         if (wolf != null && camera != null) wolf.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        if (wolf2 != null && camera != null) wolf2.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        if (wolf3 != null && camera != null) wolf3.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         if (skeleton != null && camera != null) skeleton.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        if (skeleton2 != null && camera != null) skeleton2.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+        if (skeleton3 != null && camera != null) skeleton3.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         if (spider != null && camera != null) spider.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
 
         if (dungeonWizard != null && camera != null) {
@@ -1120,7 +1184,11 @@ pentru a primi un dialog contextual in dungeon.
         /// 5. Barele de viata ale inamicilor, desenate peste foreground pentru vizibilitate.
         if (camera != null) {
             if (wolf     != null) wolf.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            if (wolf2    != null) wolf2.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            if (wolf3    != null) wolf3.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
             if (skeleton != null) skeleton.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            if (skeleton2 != null) skeleton2.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
+            if (skeleton3 != null) skeleton3.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
             if (spider   != null) spider.drawHealthBarOnly(g2d, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
         }
 
@@ -1319,7 +1387,11 @@ pentru a primi un dialog contextual in dungeon.
     private void loadLevel(int level) {
         currentLevel = level;
         wolf         = null;
+        wolf2        = null;
+        wolf3        = null;
         skeleton     = null;
+        skeleton2    = null;
+        skeleton3    = null;
         spider       = null;
         npcs.clear();
         /// Resetam si NPC-ul special din dungeon la reincarcarea nivelului.
@@ -1335,6 +1407,8 @@ pentru a primi un dialog contextual in dungeon.
             );
             setPlayerSpawn(10, 14);
             wolf = EnemyFactory.createWolf(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
+            wolf2 = EnemyFactory.createWolf(20 * Tile.TILE_WIDTH, 10 * Tile.TILE_HEIGHT, player);
+            wolf3 = EnemyFactory.createWolf(7 * Tile.TILE_WIDTH, 8 * Tile.TILE_HEIGHT, player);
             /// Garzi la poarta satului in nivelul 1.
             npcs.add(new NPC(11 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD,   "/textures/npc_village_gate_guard_spear_small.png"));
             npcs.add(new NPC(15 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player, NPC.NPCType.GUARD,   "/textures/npc_village_gate_guard_shield_small.png"));
@@ -1351,6 +1425,18 @@ pentru a primi un dialog contextual in dungeon.
             skeleton = EnemyFactory.createSkeleton(
                     11 * Tile.TILE_WIDTH,
                     13 * Tile.TILE_HEIGHT,
+                    player
+            );
+
+            skeleton2 = EnemyFactory.createSkeleton(
+                    20 * Tile.TILE_WIDTH,
+                    13 * Tile.TILE_HEIGHT,
+                    player
+            );
+
+            skeleton3 = EnemyFactory.createSkeleton(
+                    8 * Tile.TILE_WIDTH,
+                    15 * Tile.TILE_HEIGHT,
                     player
             );
 
@@ -1483,3 +1569,4 @@ pentru a primi un dialog contextual in dungeon.
         }
     }
 }
+

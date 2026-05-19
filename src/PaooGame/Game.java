@@ -171,6 +171,21 @@ public class Game implements Runnable {
     /// Daca este true, jocul incearca sa incarce progresul salvat la initializare.
     private boolean loadSavedGame = false;
 
+    /// Poțiunea specială din village, necesară înainte de Malakar.
+    private boolean villagePotionUsed = false;
+
+    /// Tile-ul de unde jucătorul poate interacționa cu poțiunea.
+    private static final int VILLAGE_POTION_TRIGGER_TILE_COL = 43;
+    private static final int VILLAGE_POTION_TRIGGER_TILE_ROW = 30;
+
+    /// Tile-ul unde poțiunea este desenată efectiv in village.
+    /// O desenăm mai spre colț, ca să pară ascunsă în tufele din dreapta-jos.
+    private static final int VILLAGE_POTION_DRAW_TILE_COL = 44;
+    private static final int VILLAGE_POTION_DRAW_TILE_ROW = 30;
+
+    /// Indică dacă jucătorul a vorbit cu vrăjitorul din dungeon.
+    private boolean talkedToDungeonWizard = false;
+
     /// Obiectul care retine starea citita din save file la Load Game.
     private SaveGameState savedGameState = null;
 
@@ -512,18 +527,23 @@ public class Game implements Runnable {
             }
         }
 
-        if (dungeonWizard != null && keyManager.enter && !lastEnterState && dungeonWizard.canInteract()) {
-            dialogBox.show(
-                    "The Mad Magician",
-                    "So... another knight dares to walk these ruins.",
-                    "The dead guard the corridors, but they do not guard the truth.",
-                    "Beyond this chamber lies a path sealed by fear and memory.",
-                    "Go forward only if your blade and will are both unbroken.",
-                    "[ SPACE ] Continue"
-            );
+        if (keyManager.enter && !lastEnterState) {
+            if (dungeonWizard != null && dungeonWizard.canInteract()) {
+                talkedToDungeonWizard = true;
+                dungeonWizard.showDialog(dialogBox);
+                lastEnterState = keyManager.enter;
+                return;
+            }
 
-            lastEnterState = keyManager.enter;
-            return;
+            if (currentLevel == 3 && tryDrinkVillagePotion()) {
+                lastEnterState = keyManager.enter;
+                return;
+            }
+
+            if (currentLevel == 3 && tryTalkToVillageNPC()) {
+                lastEnterState = keyManager.enter;
+                return;
+            }
         }
 
         if (camera != null && player != null && map != null) {
@@ -935,6 +955,10 @@ public class Game implements Runnable {
             }
         }
 
+        if (villagePotionUsed) {
+            appendDefeatedId(defeated, "moonrootPotionUsed");
+        }
+
         return defeated.toString();
     }
 
@@ -953,6 +977,13 @@ public class Game implements Runnable {
 
         if (spider != null && state.isEnemyDefeated("spider")) spider.forceDead();
 
+        if (state.isEnemyDefeated("moonrootPotionUsed")) {
+            villagePotionUsed = true;
+
+            if (player != null) {
+                player.drinkMoonrootPotion();
+            }
+        }
         /*!
          * \brief Restauram starea boss-ului dupa Load Game.
          * \details
@@ -1041,6 +1072,85 @@ public class Game implements Runnable {
         g2d.fillRect(0, LOGICALHEIGHT - 42, LOGICALWIDTH, 42);
     }
 
+
+    private Rectangle getVillagePotionRect() {
+        return new Rectangle(
+                VILLAGE_POTION_TRIGGER_TILE_COL * Tile.TILE_WIDTH,
+                VILLAGE_POTION_TRIGGER_TILE_ROW * Tile.TILE_HEIGHT,
+                Tile.TILE_WIDTH,
+                Tile.TILE_HEIGHT
+        );
+    }
+
+    private boolean isPlayerNearVillagePotion() {
+        if (player == null || villagePotionUsed) {
+            return false;
+        }
+
+        Rectangle potionArea = getVillagePotionRect();
+        potionArea.grow(30, 30);
+
+        return potionArea.intersects(player.getFeetRect());
+    }
+
+
+    private void drawVillagePotion(Graphics2D g2d, int cameraX, int cameraY, int offsetX, int offsetY) {
+        if (currentLevel != 3 || villagePotionUsed) {
+            return;
+        }
+
+        int worldX = VILLAGE_POTION_DRAW_TILE_COL * Tile.TILE_WIDTH + 24;
+        int worldY = VILLAGE_POTION_DRAW_TILE_ROW * Tile.TILE_HEIGHT + 24;
+
+
+        int screenX = offsetX + worldX - cameraX;
+        int screenY = offsetY + worldY - cameraY;
+
+        // Umbră
+        g2d.setColor(new Color(0, 0, 0, 100));
+        g2d.fillOval(screenX - 4, screenY + 12, 16, 6);
+
+        // Sticluță
+        g2d.setColor(new Color(55, 10, 75));
+        g2d.fillRoundRect(screenX, screenY, 9, 16, 4, 4);
+
+        // Lichid
+        g2d.setColor(new Color(120, 45, 170));
+        g2d.fillRoundRect(screenX + 2, screenY + 7, 5, 8, 3, 3);
+
+        // Dop
+        g2d.setColor(new Color(120, 85, 45));
+        g2d.fillRect(screenX + 2, screenY - 3, 5, 4);
+
+        // O mică licărire, ca să poată fi observată doar dacă te uiți atent.
+        g2d.setColor(new Color(210, 170, 240, 130));
+        g2d.drawLine(screenX + 7, screenY + 3, screenX + 9, screenY + 1);
+    }
+
+    private boolean tryDrinkVillagePotion() {
+        if (currentLevel != 3 || player == null || villagePotionUsed) {
+            return false;
+        }
+
+        if (!isPlayerNearVillagePotion()) {
+            return false;
+        }
+
+        villagePotionUsed = true;
+        player.drinkMoonrootPotion();
+        addScore(100);
+
+        dialogBox.show(
+                "Hidden Moonroot Potion",
+                "Behind the overgrown bushes, you find a small vial pulsing with pale violet light.",
+                "You drink it, and a cold strength spreads through your body.",
+                "Your life force has increased. Malakar's curse will not break you so easily now.",
+                "[ SPACE ] Continue"
+        );
+
+        return true;
+    }
+
     private void Draw() {
         if (wnd == null || wnd.GetCanvas() == null || !wnd.GetCanvas().isDisplayable()) {
             return;
@@ -1114,6 +1224,16 @@ public class Game implements Runnable {
             for (NPC npc : npcs) {
                 npc.Draw(g, (int) camera.GetX(), (int) camera.GetY(), offsetX, offsetY);
             }
+        }
+
+        if (camera != null) {
+            drawVillagePotion(
+                    g2d,
+                    (int) camera.GetX(),
+                    (int) camera.GetY(),
+                    offsetX,
+                    offsetY
+            );
         }
 
         if (player != null && camera != null) {
@@ -1221,6 +1341,12 @@ public class Game implements Runnable {
             g2d.setFont(new Font("Serif", Font.BOLD, 16));
             g2d.setColor(new Color(255, 230, 170));
             g2d.drawString("[ ENTER ] Talk", 315, 520);
+        }
+
+        if (currentLevel == 3 && isPlayerNearVillagePotion() && !dialogBox.isActive() && !isPaused && !isDeathScreen) {
+            g2d.setFont(new Font("Serif", Font.BOLD, 16));
+            g2d.setColor(new Color(255, 230, 170));
+            g2d.drawString("[ ENTER ] Inspect", 305, 520);
         }
 
         g2d.setColor(Color.WHITE);
@@ -1397,8 +1523,23 @@ public class Game implements Runnable {
             setPlayerSpawn(10, 14);
 
             // Inamicii de pe nivelul 1.
-            wolf = EnemyFactory.createWolf(15 * Tile.TILE_WIDTH, 14 * Tile.TILE_HEIGHT, player);
+            wolf = EnemyFactory.createWolf(
+                    15 * Tile.TILE_WIDTH,
+                    14 * Tile.TILE_HEIGHT,
+                    player
+            );
 
+            wolf2 = EnemyFactory.createWolf(
+                    6 * Tile.TILE_WIDTH,
+                    11 * Tile.TILE_HEIGHT,
+                    player
+            );
+
+            wolf3 = EnemyFactory.createWolf(
+                    18 * Tile.TILE_WIDTH,
+                    8 * Tile.TILE_HEIGHT,
+                    player
+            );
             // Garzile de la poarta satului.
             npcs.add(new NPC(11 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player,
                     NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_spear_small.png"));
@@ -1418,21 +1559,43 @@ public class Game implements Runnable {
             setPlayerSpawn(19, 24);
 
             // Inamicii specifici dungeon-ului.
-            skeleton = EnemyFactory.createSkeleton(11 * Tile.TILE_WIDTH, 13 * Tile.TILE_HEIGHT, player);
-            spider = EnemyFactory.createSpider(29 * Tile.TILE_WIDTH, 19 * Tile.TILE_HEIGHT, player);
+            // Inamicii specifici dungeon-ului.
+            skeleton = EnemyFactory.createSkeleton(
+                    11 * Tile.TILE_WIDTH,
+                    13 * Tile.TILE_HEIGHT,
+                    player
+            );
+
+            skeleton2 = EnemyFactory.createSkeleton(
+                    20 * Tile.TILE_WIDTH,
+                    13 * Tile.TILE_HEIGHT,
+                    player
+            );
+
+            skeleton3 = EnemyFactory.createSkeleton(
+                    10 * Tile.TILE_WIDTH,
+                    23 * Tile.TILE_HEIGHT,
+                    player
+            );
+
+            spider = EnemyFactory.createSpider(
+                    29 * Tile.TILE_WIDTH,
+                    19 * Tile.TILE_HEIGHT,
+                    player
+            );
 
             // NPC-ul special animat din nivelul 2.
             dungeonWizard = new WizardNPC(
-                    20 * Tile.TILE_WIDTH,
-                    16 * Tile.TILE_HEIGHT,
+                    14 * Tile.TILE_WIDTH,
+                    18 * Tile.TILE_HEIGHT,
                     player,
                     "/textures/Idle_CrazyMagician.png",
-                    "The Mad Magician",
-                    "So... another knight dares to walk these ruins.",
-                    "The dead guard the corridors, but they do not guard the truth.",
-                    "Beyond this chamber lies a path sealed by fear and memory.",
-                    "Go forward only if your blade and will are both unbroken.",
-                    "SPACE Continue"
+                    "The Imprisoned Wizard",
+                    "Knight... listen carefully. Malakar is far stronger than he seems.",
+                    "The passage ahead leads to the corrupted village beneath his shadow.",
+                    "There is a Moonroot Potion hidden there. Find it before entering the Great Hall.",
+                    "Drink it, and your body will resist part of Malakar's curse.",
+                    "[ SPACE ] Continue"
             );
         }
 
@@ -1509,6 +1672,83 @@ public class Game implements Runnable {
         showLevelDialog(level);
     }
 
+
+    private boolean canInteractWithNPC(NPC npc) {
+        if (npc == null || player == null) {
+            return false;
+        }
+
+        Rectangle interactionArea = npc.getFeetRect();
+        interactionArea.grow(55, 55);
+
+        return interactionArea.intersects(player.getFeetRect());
+    }
+
+    private boolean tryTalkToVillageNPC() {
+        if (currentLevel != 3 || npcs == null || npcs.isEmpty()) {
+            return false;
+        }
+
+        for (int i = 0; i < npcs.size(); i++) {
+            NPC npc = npcs.get(i);
+
+            if (npc != null && canInteractWithNPC(npc)) {
+                showVillageNPCDialog(i);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void showVillageNPCDialog(int npcIndex) {
+        switch (npcIndex) {
+            case 0, 1 -> dialogBox.show(
+                    "Castle Guard",
+                    "The Great Hall is sealed by fear and dark magic.",
+                    "Do not face Malakar without protection.",
+                    "Speak with the villagers. Someone knows where the potion is hidden.",
+                    "[ SPACE ] Continue"
+            );
+
+            case 2 -> dialogBox.show(
+                    "Blacksmith",
+                    "Your blade is strong, knight, but steel alone will not defeat Malakar.",
+                    "The old stories speak of a Moonroot Potion hidden in this village.",
+                    "[ SPACE ] Continue"
+            );
+
+            case 3 -> dialogBox.show(
+                    "Village Woman",
+                    "I saw a strange vial near the lower houses.",
+                    "It glowed like moonlight, but no one here dared touch it.",
+                    "[ SPACE ] Continue"
+            );
+
+            case 4 -> dialogBox.show(
+                    "Village Elder",
+                    "The potion will not kill Malakar, but it may keep you alive long enough.",
+                    "Drink it before entering the Great Hall.",
+                    "[ SPACE ] Continue"
+            );
+
+            case 5 -> dialogBox.show(
+                    "Merchant",
+                    "The Moonroot Potion was hidden away from Malakar's eyes.",
+                    "Search the south-eastern edge of the village, near the bushes behind the last house.",
+                    "You will not see it unless you truly look for it.",
+                    "[ SPACE ] Continue"
+            );
+
+            default -> dialogBox.show(
+                    "Villager",
+                    "Malakar's shadow has reached every home.",
+                    "Find the potion before you go further.",
+                    "[ SPACE ] Continue"
+            );
+        }
+    }
+
     /**
      * Detecteaza daca jucatorul incearca sa intre prin zona interzisa
      * din partea de sus a nivelului 1.
@@ -1558,6 +1798,20 @@ public class Game implements Runnable {
             if (map.isTransitionAtPixel(px, py)
                     || map.isTransitionAtPixel(px - 8, py)
                     || map.isTransitionAtPixel(px + 8, py)) {
+
+                if (!talkedToDungeonWizard) {
+                    dialogBox.show(
+                            "The Sealed Passage",
+                            "A cold force blocks your path.",
+                            "You feel that someone in this dungeon still knows the way forward.",
+                            "Find the imprisoned wizard before leaving for the village.",
+                            "[ SPACE ] Continue"
+                    );
+
+                    transitionCooldown = 30;
+                    return;
+                }
+
                 loadLevel(3);
                 saveCurrentGame(false);
             }
@@ -1568,6 +1822,18 @@ public class Game implements Runnable {
             if (map.isTransitionAtPixel(px, py)
                     || map.isTransitionAtPixel(px - 8, py)
                     || map.isTransitionAtPixel(px + 8, py)) {
+
+                if (!villagePotionUsed) {
+                    dialogBox.show(
+                            "The Great Hall",
+                            "A dark force pushes you back.",
+                            "You remember the wizard's warning: you need the Moonroot Potion first.",
+                            "[ SPACE ] Continue"
+                    );
+                    transitionCooldown = 30;
+                    return;
+                }
+
                 loadLevel(4);
                 saveCurrentGame(false);
             }

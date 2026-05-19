@@ -1,0 +1,20 @@
+[33m60ac965[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31mmirch1/master[m[33m)[m feat: add narrative dialog box for level introductions
+[33m8b0d285[m chore: update .gitignore
+[33mdcdfd68[m add SQLite leaderboard, DatabaseManager and score persistance
+[33m0c1ef8c[m all files from master organization
+[33m43f9c9d[m Implement enemy defeat handling in game state
+[33m99edd43[m Enhance saveGame method to include defeated enemies
+[33ma117145[m Enhance SaveGameState to include defeated enemies
+[33me1d4695[m Implement forceDead method in Entity class
+[33mff78c14[m Add defeat state methods to NPC class
+[33ma4ad357[m Refine battle music trigger conditions
+[33m3a135fa[m Refactor combat damage calculations for difficulty adjustment
+[33mcc7b427[m Enhance AudioManager to resume last requested music
+[33mb4cc91f[m Enhance GameSettings with damage calculation methods
+[33m1a4501a[m Implement applySettingsToRuntime for immediate settings
+[33m27a494a[m Update harta_nivel3_the_great_hall for collision improvement
+[33me43cc23[m Update harta_nivel_3_village for collision improvement
+[33mce725e7[m Update dungeon map data in harta_nivel2_dungeon.tmx
+[33mb4246e2[m Refactor enemy creation using EnemyFactory
+[33m214cde5[m Add enemy factory design pattern
+[33ma7c3e89[m Refactor saveCurrentGame method for clarity

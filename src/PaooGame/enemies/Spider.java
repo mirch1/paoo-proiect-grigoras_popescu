@@ -42,10 +42,10 @@ public class Spider extends Entity {
     private int attackCooldown   = 0;       /*!< Cooldown intre doua aruncari (cadre). */
 
     /// Damage aplicat jucatorului de fiecare proiectil de panza.
-    public static final int WEB_DAMAGE = 8;
+    public static final int WEB_DAMAGE = 4;
 
     /// Damage aplicat la contact fizic direct (corp la corp).
-    public static final int ATTACK_DAMAGE = 8;
+    public static final int ATTACK_DAMAGE = 4;
 
     /// Configurare decupare pentru panza din sheet (grila 32x32).
     private static final int WEB_ROW       = 7; /*!< Randul din sheet unde este animatia panzei. */

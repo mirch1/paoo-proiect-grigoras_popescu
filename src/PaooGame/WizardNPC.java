@@ -50,7 +50,7 @@ public class WizardNPC {
     private final int feetHeight = 5;
 
     /// Distanta suplimentara in jurul NPC-ului in care este permisa interactiunea.
-    private static final int INTERACTION_PADDING = 56;
+    private static final int INTERACTION_PADDING = 100;
 
     /// Liniile de dialog afisate cand jucatorul vorbeste cu magicianul.
     private final String[] dialogLines;

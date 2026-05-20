@@ -138,6 +138,23 @@ public class Game implements Runnable {
     /// Subtitlul afisat pe ecranul de moarte (ex. "BAD ENTRANCE").
     private String deathSubtitle = "";
 
+    /*!
+     * \brief Arata daca ecranul de final al jocului este activ.
+     * \details
+     * Devine true dupa moartea lui Malakar, boss-ul final.
+     * Cat timp acest ecran este activ, gameplay-ul normal este blocat,
+     * exact ca la death screen.
+     */
+    private boolean isEndingScreen = false;
+
+    /*!
+     * \brief Optiunea selectata in meniul ecranului de final.
+     * \details
+     * 0 = RETURN TO MENU
+     * 1 = EXIT GAME
+     */
+    private int endingMenuSelection = 0;
+
     /// Marcheaza revenirea in meniul principal dupa oprirea jocului.
     private volatile boolean returnToMenuRequested = false;
 
@@ -415,7 +432,13 @@ public class Game implements Runnable {
     }
 
     private void updateBattleMusic() {
-        if (isDeathScreen || player == null || player.isDead()) {
+        /*!
+         * \brief Nu schimbam muzica de battle cat timp un ecran final este activ.
+         * \details
+         * Atat death screen-ul, cat si ending screen-ul blocheaza logica normala
+         * de audio combat.
+         */
+        if (isDeathScreen || isEndingScreen || player == null || player.isDead) {
             inBattle = false;
             return;
         }
@@ -442,6 +465,17 @@ public class Game implements Runnable {
 
         if (isDeathScreen) {
             updateDeathScreen();
+            return;
+        }
+
+        /*!
+         * \brief Ecranul de final are prioritate mare si blocheaza gameplay-ul.
+         * \details
+         * Dupa ce Malakar este invins, jocul intra intr-o stare finala
+         * in care nu mai actualizam jucatorul, NPC-urile sau combat-ul.
+         */
+        if (isEndingScreen) {
+            updateEndingScreen();
             return;
         }
 
@@ -797,17 +831,110 @@ public class Game implements Runnable {
             }
         }
 
+        /*!
+         * \brief Daca Malakar a fost invins, deschidem ecranul de final.
+         * \details
+         * Ending screen-ul este afisat o singura data si opreste muzica
+         * de lupta, oferind jucatorului un final clar dupa boss fight.
+         */
+        if (malakar != null && malakar.isDead() && !isEndingScreen) {
+            openEndingScreen();
+            return;
+        }
+
         if (player.isDead()) {
             openDeathScreen();
         }
     }
 
     // =========================================================================
-    //  ECRAN DE MOARTE
+    //  ECRAN DE MOARTE / FINAL
     // =========================================================================
 
     private void openDeathScreen() {
         openDeathScreen("");
+    }
+
+    /*!
+     * \brief Deschide ecranul de final dupa invingerea lui Malakar.
+     * \details
+     * Opreste muzica curenta, blocheaza gameplay-ul si reseteaza starile
+     * tastelor pentru a evita selectii accidentale imediat dupa kill-ul final.
+     */
+    private void openEndingScreen() {
+        isEndingScreen = true;
+        endingMenuSelection = 0;
+        isPaused = false;
+
+        AudioManager.getInstance().stopMusic();
+        inBattle = false;
+
+        if (keyManager != null) {
+            keyManager.Clear();
+        }
+
+        lastUpState = false;
+        lastDownState = false;
+        lastEnterState = false;
+        lastEscapeState = false;
+        lastSpaceState = false;
+    }
+
+    /*!
+     * \brief Gestioneaza navigarea in meniul ecranului de final.
+     * \details
+     * Navigare cu sus/jos, confirmare cu Enter.
+     * Optiunile disponibile sunt:
+     * - RETURN TO MENU
+     * - EXIT GAME
+     */
+    private void updateEndingScreen() {
+        if (keyManager.up && !lastUpState) {
+            endingMenuSelection--;
+            if (endingMenuSelection < 0) {
+                endingMenuSelection = 1;
+            }
+        }
+
+        if (keyManager.down && !lastDownState) {
+            endingMenuSelection++;
+            if (endingMenuSelection > 1) {
+                endingMenuSelection = 0;
+            }
+        }
+
+        if (keyManager.enter && !lastEnterState) {
+            executeEndingMenuAction();
+        }
+
+        lastUpState = keyManager.up;
+        lastDownState = keyManager.down;
+        lastEnterState = keyManager.enter;
+    }
+
+    /*!
+     * \brief Executa actiunea selectata in ecranul de final.
+     * \details
+     * RETURN TO MENU:
+     * - revine in meniul principal
+     *
+     * EXIT GAME:
+     * - opreste muzica
+     * - inchide conexiunea la baza de date
+     * - inchide aplicatia
+     */
+    private void executeEndingMenuAction() {
+        if (endingMenuSelection == 0) {
+            returnToMainMenu();
+        } else {
+            AudioManager.getInstance().stopMusic();
+            try {
+                DatabaseManager.getInstance().closeConnection();
+            } catch (Exception ignored) {
+            }
+
+            System.exit(0);
+        }
     }
 
     private void openDeathScreen(String subtitle) {
@@ -984,6 +1111,7 @@ public class Game implements Runnable {
                 player.drinkMoonrootPotion();
             }
         }
+
         /*!
          * \brief Restauram starea boss-ului dupa Load Game.
          * \details
@@ -1072,7 +1200,6 @@ public class Game implements Runnable {
         g2d.fillRect(0, LOGICALHEIGHT - 42, LOGICALWIDTH, 42);
     }
 
-
     private Rectangle getVillagePotionRect() {
         return new Rectangle(
                 VILLAGE_POTION_TRIGGER_TILE_COL * Tile.TILE_WIDTH,
@@ -1093,7 +1220,6 @@ public class Game implements Runnable {
         return potionArea.intersects(player.getFeetRect());
     }
 
-
     private void drawVillagePotion(Graphics2D g2d, int cameraX, int cameraY, int offsetX, int offsetY) {
         if (currentLevel != 3 || villagePotionUsed) {
             return;
@@ -1102,23 +1228,22 @@ public class Game implements Runnable {
         int worldX = VILLAGE_POTION_DRAW_TILE_COL * Tile.TILE_WIDTH + 24;
         int worldY = VILLAGE_POTION_DRAW_TILE_ROW * Tile.TILE_HEIGHT + 24;
 
-
         int screenX = offsetX + worldX - cameraX;
         int screenY = offsetY + worldY - cameraY;
 
-        // Umbră
+        // Umbră.
         g2d.setColor(new Color(0, 0, 0, 100));
         g2d.fillOval(screenX - 4, screenY + 12, 16, 6);
 
-        // Sticluță
+        // Sticluță.
         g2d.setColor(new Color(55, 10, 75));
         g2d.fillRoundRect(screenX, screenY, 9, 16, 4, 4);
 
-        // Lichid
+        // Lichid.
         g2d.setColor(new Color(120, 45, 170));
         g2d.fillRoundRect(screenX + 2, screenY + 7, 5, 8, 3, 3);
 
-        // Dop
+        // Dop.
         g2d.setColor(new Color(120, 85, 45));
         g2d.fillRect(screenX + 2, screenY - 3, 5, 4);
 
@@ -1322,8 +1447,8 @@ public class Game implements Runnable {
             Color hudColor = ratio > 0.6f
                     ? new Color(50, 200, 50)
                     : ratio > 0.3f
-                      ? new Color(220, 190, 20)
-                      : new Color(210, 40, 40);
+                    ? new Color(220, 190, 20)
+                    : new Color(210, 40, 40);
 
             g2d.setColor(hudColor);
             g2d.fillRoundRect(hudX, hudY, (int) (hudW * ratio), hudH, 4, 4);
@@ -1372,6 +1497,16 @@ public class Game implements Runnable {
             String scoreText = "SCOR FINAL: " + score;
             FontMetrics sm = g2d.getFontMetrics(scoreFont);
             g2d.drawString(scoreText, (LOGICALWIDTH - sm.stringWidth(scoreText)) / 2, 285);
+        }
+
+        /*!
+         * \brief Ecranul de final este desenat peste scena jocului.
+         * \details
+         * Se afiseaza dupa invingerea lui Malakar si include mesajul final,
+         * scorul obtinut si optiunile de iesire.
+         */
+        if (isEndingScreen) {
+            drawEndingScreen(g2d);
         }
 
         dialogBox.draw(g2d, LOGICALWIDTH, LOGICALHEIGHT);
@@ -1438,6 +1573,65 @@ public class Game implements Runnable {
         }
     }
 
+    /*!
+     * \brief Deseneaza ecranul de final dupa invingerea boss-ului final.
+     * \details
+     * Afiseaza un fundal negru, un titlu mare de final, un mesaj narativ,
+     * scorul final al sesiunii si doua optiuni:
+     * RETURN TO MENU / EXIT GAME.
+     *
+     * \param g2d Contextul grafic 2D curent.
+     */
+    private void drawEndingScreen(Graphics2D g2d) {
+        g2d.setColor(Color.BLACK);
+        g2d.fillRect(0, 0, LOGICALWIDTH, LOGICALHEIGHT);
+
+        String title = "THE END";
+        Font titleFont = new Font("Serif", Font.BOLD, 72);
+        g2d.setFont(titleFont);
+
+        FontMetrics titleMetrics = g2d.getFontMetrics(titleFont);
+        int titleX = (LOGICALWIDTH - titleMetrics.stringWidth(title)) / 2;
+        int titleY = 180;
+
+        g2d.setColor(new Color(218, 165, 32));
+        g2d.drawString(title, titleX, titleY);
+
+        Font textFont = new Font("Serif", Font.PLAIN, 28);
+        g2d.setFont(textFont);
+        g2d.setColor(new Color(220, 220, 220));
+
+        String line1 = "Malakar has fallen.";
+        String line2 = "The kingdom of Aethelgard may yet rise again.";
+        String line3 = "Final Score: " + score;
+
+        FontMetrics fm = g2d.getFontMetrics(textFont);
+        g2d.drawString(line1, (LOGICALWIDTH - fm.stringWidth(line1)) / 2, 260);
+        g2d.drawString(line2, (LOGICALWIDTH - fm.stringWidth(line2)) / 2, 305);
+        g2d.drawString(line3, (LOGICALWIDTH - fm.stringWidth(line3)) / 2, 360);
+
+        String[] options = {"RETURN TO MENU", "EXIT GAME"};
+        Font optionFont = new Font("Serif", Font.BOLD, 30);
+        g2d.setFont(optionFont);
+
+        FontMetrics optionMetrics = g2d.getFontMetrics(optionFont);
+        int startY = 460;
+
+        for (int i = 0; i < options.length; i++) {
+            String text = (i == endingMenuSelection) ? "> " + options[i] : options[i];
+
+            if (i == endingMenuSelection) {
+                g2d.setColor(new Color(218, 165, 32));
+            } else {
+                g2d.setColor(new Color(170, 170, 180));
+            }
+
+            int x = (LOGICALWIDTH - optionMetrics.stringWidth(text)) / 2;
+            int y = startY + i * 60;
+            g2d.drawString(text, x, y);
+        }
+    }
+
     // =========================================================================
     //  NIVELURI
     // =========================================================================
@@ -1455,8 +1649,8 @@ public class Game implements Runnable {
         }
 
         // Calculam coordonatele astfel incat sprite-ul jucatorului sa fie centrat pe tile-ul dorit.
-        float spawnX = tileCol * Tile.TILE_WIDTH+ Tile.TILE_WIDTH/ 2.0f - player.GetWidth() / 2.0f;
-        float spawnY = tileRow * Tile.TILE_HEIGHT+ Tile.TILE_HEIGHT/ 2.0f - player.GetHeight() / 2.0f;
+        float spawnX = tileCol * Tile.TILE_WIDTH + Tile.TILE_WIDTH / 2.0f - player.GetWidth() / 2.0f;
+        float spawnY = tileRow * Tile.TILE_HEIGHT + Tile.TILE_HEIGHT / 2.0f - player.GetHeight() / 2.0f;
 
         // Aplicam pozitia noua a jucatorului.
         player.setPosition(spawnX, spawnY);
@@ -1472,12 +1666,6 @@ public class Game implements Runnable {
         }
     }
 
-    /**
-     * Incarca nivelul cerut si reinitializeaza entitatile specifice acelui nivel.
-     * Scorul NU este resetat aici.
-     *
-     * @param level nivelul care trebuie incarcat
-     */
     /**
      * Incarca nivelul cerut si reinitializeaza entitatile specifice acelui nivel.
      * Scorul NU este resetat aici.
@@ -1540,6 +1728,7 @@ public class Game implements Runnable {
                     8 * Tile.TILE_HEIGHT,
                     player
             );
+
             // Garzile de la poarta satului.
             npcs.add(new NPC(11 * Tile.TILE_WIDTH, 2 * Tile.TILE_HEIGHT, player,
                     NPC.NPCType.GUARD, "/textures/npc_village_gate_guard_spear_small.png"));
@@ -1558,7 +1747,6 @@ public class Game implements Runnable {
             // Pozitia initiala a jucatorului in dungeon.
             setPlayerSpawn(19, 24);
 
-            // Inamicii specifici dungeon-ului.
             // Inamicii specifici dungeon-ului.
             skeleton = EnemyFactory.createSkeleton(
                     11 * Tile.TILE_WIDTH,
@@ -1671,7 +1859,6 @@ public class Game implements Runnable {
         // Afisam dialogul de introducere al nivelului, daca nu a fost deja afisat in sesiunea curenta.
         showLevelDialog(level);
     }
-
 
     private boolean canInteractWithNPC(NPC npc) {
         if (npc == null || player == null) {

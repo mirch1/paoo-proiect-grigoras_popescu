@@ -118,6 +118,7 @@ public class Player extends Entity {
             if (attackTimer <= 0) isAttacking = false;
         }
 
+
         /// Animatia de intoarcere la schimbarea directiei.
         if (wasFacingRight != facingRight && xMove != 0) {
             isTurning = true;
